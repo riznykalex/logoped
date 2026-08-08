@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tongue Control — Web</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #181820;
+      color: #e8e8f0;
+      font-family: system-ui, sans-serif;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 14px;
+      background: #20202c;
+      border-bottom: 1px solid #333;
+      flex-wrap: wrap;
+    }
+    header h1 { font-size: 18px; margin: 0; margin-right: 8px; }
+    select, button, .file-btn {
+      background: #2a2a3a;
+      color: #e8e8f0;
+      border: 1px solid #444;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    button:hover, select:hover { background: #34344a; }
+    button.active { background: #d4362b; border-color: #ff6b5e; }
+    button:disabled { opacity: 0.4; cursor: default; }
+    .status { flex: 1; text-align: right; font-size: 13px; min-width: 200px; }
+    .status.warn { color: #ffc800; }
+    .status.error { color: #ff5c5c; }
+    .status.info { color: #8fd08f; }
+
+    .app { display: flex; gap: 14px; padding: 14px; flex-wrap: wrap; }
+
+    .col { display: flex; flex-direction: column; gap: 10px; }
+
+    .cam-wrap { position: relative; width: 480px; }
+    #cameraCanvas { width: 100%; display: block; border-radius: 8px; background: #000; }
+    .sliders { width: 480px; }
+    .sliders .row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+    .sliders label { width: 150px; font-size: 13px; color: #b8b8c8; }
+    .sliders input[type=range] { flex: 1; }
+    .sliders output { width: 46px; text-align: right; font-size: 13px; color: #8fd08f; }
+
+    .panel {
+      width: 128px; height: 128px;
+      background: #000;
+      border: 1px solid #555;
+      border-radius: 8px;
+      position: relative;
+    }
+    /* На вузьких екранах Camera View і Matched — в один ряд */
+    @media (max-width: 1280px) {
+      .panels-col { flex-direction: row; align-items: center; }
+    }
+    .grid { display: grid; grid-template-columns: auto auto auto; gap: 6px; align-items: center; justify-content: start; }
+    .grid .mid { grid-row: 2; grid-column: 2; }
+    .grid .nw { grid-row: 1; grid-column: 1; }
+    .grid .n { grid-row: 1; grid-column: 2; }
+    .grid .ne { grid-row: 1; grid-column: 3; }
+    .grid .w { grid-row: 2; grid-column: 1; }
+    .grid .e { grid-row: 2; grid-column: 3; }
+    .grid .sw { grid-row: 3; grid-column: 1; }
+    .grid .s { grid-row: 3; grid-column: 2; }
+    .grid .se { grid-row: 3; grid-column: 3; }
+    .arrow-btn { width: 42px; height: 34px; padding: 0; font-size: 12px; }
+    #btnOpen { background: #7a1f1f; }
+
+    .game-wrap { width: 400px; }
+    #gameCanvas { width: 400px; height: 440px; display: block; border-radius: 8px; background: #000; }
+
+    .help {
+      font-size: 12px; color: #a0a0b0; background: #20202c;
+      border: 1px solid #333; border-radius: 8px; padding: 8px 12px; line-height: 1.5;
+      max-width: 480px;
+    }
+    kbd {
+      background: #333; border: 1px solid #555; border-radius: 4px;
+      padding: 1px 6px; font-family: inherit; font-size: 12px;
+    }
+    .mirror-toggle {
+      font-size: 13px; color: #b8b8c8; display: flex; align-items: center; gap: 5px;
+      cursor: pointer;
+    }
+    .mirror-toggle input { accent-color: #8fd08f; width: 15px; height: 15px; }
+    video { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Tongue Control</h1>
+    <select id="camSelect" title="Камера"></select>
+    <input type="text" id="serverUrl" placeholder="Server URL (порожньо = цей же домен)" title="Адреса сервера класифікації, напр. https://tongue.example.com" />
+    <button id="btnCalibrate" title="Режим калібрування еталонів">Calibrate</button>
+    <label class="mirror-toggle" title="Показувати як у дзеркалі (як Zoom) чи сирий кадр">
+      <input type="checkbox" id="chkMirror" checked /> Mirror
+    </label>
+    <div id="status" class="status">Ініціалізація…</div>
+  </header>
+
+  <div class="app">
+    <div class="col">
+      <div class="cam-wrap">
+        <canvas id="cameraCanvas" width="480" height="270"></canvas>
+      </div>
+      <div class="sliders">
+        <div class="row">
+          <label for="slContrast">Contrast</label>
+          <input type="range" id="slContrast" min="1" max="3" value="1.0" step="0.1" />
+          <output id="outContrast">1.0</output>
+        </div>
+        <div class="row">
+          <label for="slBrightness">Brightness</label>
+          <input type="range" id="slBrightness" min="-100" max="100" value="0" step="1" />
+          <output id="outBrightness">0</output>
+        </div>
+        <div class="row">
+          <label for="slLight">Lighting</label>
+          <input type="range" id="slLight" min="0" max="200" value="100" step="1" />
+          <output id="outLight">100</output>
+        </div>
+        <div class="row">
+          <label for="slShadow">Shadow threshold</label>
+          <input type="range" id="slShadow" min="0" max="100" value="70" step="1" />
+          <output id="outShadow">0.70</output>
+        </div>
+      </div>
+      <div class="help">
+        <b>Як працює:</b> спочатку пройдіть <b>калібрування</b> (кнопка Calibrate),
+        потім послідовно висуньте язик в кожну позицію і натисніть відповідну стрілку,
+        потім відкрийте рот і натисніть <b>OPEN</b>. Еталони зберігаються на сервері
+        класифікації (поле <b>Server URL</b>; порожнє — той самий домен).
+        Потім грайте в joystick: язик рухає ціль, ловіть червону точку.
+        <kbd>R</kbd> — перезапуск гри. Пункт <b>Mirror</b> у шапці ввімкнено за
+        замовчуванням (як у Python — дзеркальний вигляд камери); зніміть галочку
+        для сирого кадру. Якщо зміни не застосувалися — оновіть сторінку через
+        <kbd>Ctrl+F5</kbd>.
+      </div>
+    </div>
+
+    <div class="col panels-col">
+      <div class="grid">
+        <div class="nw"></div>
+        <div class="n"><button id="btnUp" class="arrow-btn" hidden>UP</button></div>
+        <div class="ne"></div>
+        <div class="w"><button id="btnLeft" class="arrow-btn" hidden>LEFT</button></div>
+        <div class="mid"><canvas id="cvPanel" class="panel" width="128" height="128"></canvas></div>
+        <div class="e"><button id="btnRight" class="arrow-btn" hidden>RIGHT</button></div>
+        <div class="sw"></div>
+        <div class="s"><button id="btnDown" class="arrow-btn" hidden>DOWN</button></div>
+        <div class="se"><button id="btnOpen" class="arrow-btn" hidden>OPEN</button></div>
+      </div>
+      <canvas class="panel" id="mtPanel" width="128" height="128"></canvas>
+    </div>
+
+    <div class="col game-wrap">
+      <canvas id="gameCanvas" width="400" height="440"></canvas>
+    </div>
+  </div>
+
+  <video id="video" autoplay playsinline></video>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
