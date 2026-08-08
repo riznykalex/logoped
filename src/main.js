@@ -5,7 +5,7 @@ import { initFaceLandmarker, detectFace, isFaceLandmarkerReady } from './facemes
 import { TongueTracker, HoldFilter } from './tracker.js';
 import { SettingsUI } from './settings.js';
 import { CalibrationUI } from './calibration.js';
-import { JoystickGame } from './games/joystick.js';
+import { SnakeGame } from './games/snake.js';
 import { classify, getServerUrl, setServerUrl, listTemplates } from './server.js';
 
 const $ = (id) => document.getElementById(id);
@@ -36,7 +36,7 @@ const tracker = new TongueTracker(settingsUI);
 const hold = new HoldFilter(80); // стабілізація: 80 мс (~1 запит при RTT 80 мс)
 const cal = new CalibrationUI();
 cal.onMessage = (msg) => setStatus(msg, 'info');
-const game = new JoystickGame({ speed: 8.0, catchDist: 22, targetTimeout: 6.0 }, els.gameCanvas);
+const game = new SnakeGame({ stepMs: 450, cols: 10, rows: 11 }, els.gameCanvas);
 
 let stream = null;
 let lastT = performance.now();
