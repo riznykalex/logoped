@@ -33,7 +33,7 @@ const settingsUI = new SettingsUI({
 });
 
 const tracker = new TongueTracker(settingsUI);
-const hold = new HoldFilter(400);
+const hold = new HoldFilter(80); // стабілізація: 80 мс (~1 запит при RTT 80 мс)
 const cal = new CalibrationUI();
 cal.onMessage = (msg) => setStatus(msg, 'info');
 const game = new JoystickGame({ speed: 8.0, catchDist: 22, targetTimeout: 6.0 }, els.gameCanvas);
@@ -310,17 +310,20 @@ function tick() {
     drawOverlays(camCtx, vw, vh, last);
     drawPanels(last);
 
-    // Надіслати маску на класифікацію (рот закритий — не надсилаємо)
+    // Рот закритий — маску не надсилаємо, стан = NEUTRAL (як у Python),
+    // курсор миттєво зупиняється (брак).
     if (last.mouthClosed) {
       pendingMask = null;
+      tracker.last.state = 'NEUTRAL';
+      hold.reset();
+      game.onState('NEUTRAL');
     } else {
       queueMask(last.normalized);
+      pumpClassify(now);
+      // Стабілізований стан → гра
+      const confirmed = hold.update(last.state, now);
+      game.onState(confirmed);
     }
-    pumpClassify(now);
-
-    // Стабілізований стан → гра
-    const confirmed = hold.update(last.state, now);
-    game.onState(confirmed);
   }
 
   game.tick(dt);
