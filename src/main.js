@@ -155,6 +155,30 @@ function drawMaskToPanel(panel, arr, label) {
   ctx.fillText(label.text, 5, 15);
 }
 
+/** Розтягує чорно-білу маску maskSize×maskSize на найбільший центрований
+ *  квадрат канваса (без спотворення; решта — чорне). */
+function paintMask(ctx, arr, w, h) {
+  const m = CONFIG.tracker.maskSize;
+  if (tmp.width !== m) {
+    tmp.width = m;
+    tmp.height = m;
+  }
+  const img = new ImageData(m, m);
+  for (let i = 0; i < m * m; i++) {
+    const v = arr[i] | 0;
+    img.data[i * 4] = v;
+    img.data[i * 4 + 1] = v;
+    img.data[i * 4 + 2] = v;
+    img.data[i * 4 + 3] = 255;
+  }
+  tmpCtx.putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  const size = Math.min(w, h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(tmp, (w - size) / 2, (h - size) / 2, size, size);
+}
+
 function drawOverlays(cc, vw, vh, last) {
   cc.font = '16px system-ui, sans-serif';
   cc.lineWidth = 1;
@@ -194,17 +218,11 @@ function drawFrame(ctx) {
   ctx.drawImage(tmp, 0, 0);
 }
 
-/** Малюємо кадр на обидва видимих канваси (екран камери і екран калібрування). */
-function paintVisible() {
-  drawFrame(camCtx);
-  drawFrame(calibCtx);
-}
-
 function showRawCamera(raw) {
   tmp.width = raw.width;
   tmp.height = raw.height;
   tmpCtx.putImageData(raw, 0, 0);
-  paintVisible();
+  drawFrame(camCtx);
 }
 
 function drawPanels(last) {
@@ -323,6 +341,8 @@ function tick() {
       camCtx.font = 'bold 22px system-ui, sans-serif';
       camCtx.fillStyle = '#ff0000';
       camCtx.fillText('FACE NOT DETECTED', 20, 40);
+      calibCtx.fillStyle = '#000';
+      calibCtx.fillRect(0, 0, vw, vh);
       calibCtx.font = 'bold 22px system-ui, sans-serif';
       calibCtx.fillStyle = '#ff0000';
       calibCtx.fillText('FACE NOT DETECTED', 20, 40);
@@ -341,17 +361,23 @@ function tick() {
     const lms = rawLms.map((lm) => ({ x: 1 - lm.x, y: lm.y, z: lm.z }));
     const { last, lit } = tracker.process(raw, lms);
 
-    // Показуємо оброблений кадр з урахуванням Mirror
+    // Показуємо оброблений кадр (екран камери) і чорно-білу маску
+    // (екран калібрування — видно, який патерн зніме система).
     litCanvas.width = vw;
     litCanvas.height = vh;
     litCtx.putImageData(lit, 0, 0);
     tmp.width = vw;
     tmp.height = vh;
     tmpCtx.drawImage(litCanvas, 0, 0);
-    paintVisible();
+    drawFrame(camCtx);
+    paintMask(calibCtx, last.normalized, vw, vh);
 
     drawOverlays(camCtx, vw, vh, last);
-    drawOverlays(calibCtx, vw, vh, last);
+    calibCtx.textAlign = 'left';
+    calibCtx.textBaseline = 'top';
+    calibCtx.fillStyle = '#00ffff';
+    calibCtx.font = 'bold 20px system-ui, sans-serif';
+    calibCtx.fillText('Camera View: ' + last.state, 10, 10);
     drawPanels(last);
 
     // Рот закритий — маску не надсилаємо, стан = NEUTRAL (як у Python),
