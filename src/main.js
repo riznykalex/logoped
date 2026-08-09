@@ -6,7 +6,7 @@ import { TongueTracker, HoldFilter } from './tracker.js';
 import { SettingsUI } from './settings.js';
 import { CalibrationUI } from './calibration.js';
 import { SnakeGame } from './games/snake.js';
-import { classify, getServerUrl, setServerUrl, listTemplates, getProfileKey, getProfileName, setProfileName } from './server.js';
+import { classify, listTemplates, getProfileKey, getProfileName, setProfileName } from './server.js';
 import { CONFIG } from './config.js';
 
 const $ = (id) => document.getElementById(id);
@@ -18,7 +18,6 @@ const els = {
   mtPanel: $('mtPanel'),
   gameCanvas: $('gameCanvas'),
   camSelect: $('camSelect'),
-  serverUrl: $('serverUrl'),
   profileName: $('profileName'),
   status: $('status'),
   btnCalibrate: $('btnCalibrate'),
@@ -83,7 +82,7 @@ function pumpClassify(now) {
       game.onState('NEUTRAL');
       if (!serverErrorShown) {
         serverErrorShown = true;
-        setStatus('Сервер класифікації недоступний: ' + err.message + ' — перевірте Server URL.', 'error');
+        setStatus('Сервер класифікації недоступний: ' + err.message + ' — перевірте адресу в config.js.', 'error');
       }
     })
     .finally(() => {
@@ -129,13 +128,6 @@ els.camSelect.addEventListener('change', () => {
 
 $('chkMirror').addEventListener('change', (e) => {
   mirror = e.target.checked;
-});
-
-els.serverUrl.value = getServerUrl();
-els.serverUrl.addEventListener('change', () => {
-  setServerUrl(els.serverUrl.value);
-  els.serverUrl.value = getServerUrl();
-  setStatus('Server URL: ' + getServerUrl(), 'info');
 });
 
 els.profileName.value = getProfileName();
@@ -405,7 +397,7 @@ async function boot() {
       'info',
     );
   } catch (e) {
-    setStatus('Сервер недоступний: ' + e.message + ' — гра на паузі. Вкажіть Server URL.', 'error');
+    setStatus('Сервер недоступний: ' + e.message + ' — гра на паузі. Перевірте config.js.', 'error');
   }
 
   try {
