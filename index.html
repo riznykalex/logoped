@@ -50,6 +50,7 @@
       background: #000;
       overflow: hidden;
       pointer-events: none;
+      z-index: 20;
     }
     #cvPanel {
       width: 100%; height: 100%;
@@ -60,6 +61,7 @@
     #camSelectWrap {
       position: absolute;
       top: 12px; left: 12px;
+      z-index: 20;
     }
     #camSelect {
       background: rgba(20,20,32,0.75);
@@ -72,10 +74,12 @@
       max-width: 160px;
     }
 
-    /* Overlay повзунків — поверх камери */
+    /* Overlay повзунків — нижче верхньої смуги, щоб не перекривати
+       Camera View (правий верхній кут) і вибір камери (лівий кут) */
     #sliderOverlay {
       position: absolute;
-      inset: 0;
+      left: 0; right: 0; bottom: 0;
+      top: 120px;
       background: rgba(0,0,0,0.55);
       backdrop-filter: blur(4px);
       display: none;
