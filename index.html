@@ -31,9 +31,11 @@
       background: #000;
     }
 
-    /* Камера — на весь екран */
+    /* Камера — на весь екран. min-height:0 — щоб канвас міг стиснутися
+       нижче розміру бітмапа і не виштовхувати футер з екрана */
     #cameraCanvas {
-      flex: 1;
+      flex: 1 1 0;
+      min-height: 0;
       width: 100%;
       object-fit: cover;
       display: block;
@@ -137,6 +139,7 @@
       backdrop-filter: blur(6px);
       position: relative; /* поверх overlay */
       z-index: 10;
+      flex-shrink: 0;
     }
     #cameraFooter .status-text {
       flex: 1;
@@ -169,7 +172,8 @@
     }
 
     #calibCamWrap {
-      flex: 1;
+      flex: 1 1 0;
+      min-height: 0;
       position: relative;
       overflow: hidden;
     }
