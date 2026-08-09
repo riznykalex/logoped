@@ -2,10 +2,11 @@
 // Темна половина обличчя освітлюється горизонтальним градієнтом
 // від краю обличчя до центру cx. Світла половина не змінюється.
 // strength у [0..1]. Посилено: більший gain + степенева крива градієнта.
+import { CONFIG } from './config.js';
 
-const PERCENTILE = 75;
-const MAX_GAIN = 5.0;
-const GRAD_POWER = 0.65;
+const PERCENTILE = CONFIG.lighting.percentile;
+const MAX_GAIN = CONFIG.lighting.maxGain;
+const GRAD_POWER = CONFIG.lighting.gradPower;
 
 /**
  * Будує маску обличчя (0/255) за опуклою оболонкою точок landmarks.

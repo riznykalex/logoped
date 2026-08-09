@@ -1,13 +1,18 @@
 // server.js — клієнт серверної класифікації.
 // Template Matching та еталони живуть на сервері; тут лише HTTP-обмін.
-// Маска 64×64 (4096 байт) — POST /classify → {state, dist}.
+// Маска maskSize×maskSize (CONFIG) — POST /classify → {state, dist}.
 // Профіль: X-User-Id — ключ профілю (localStorage), еталони в calibration/<ключ>/.
 
-let baseUrl = '';
+import { CONFIG } from './config.js';
+
+const DEFAULT_SERVER_URL = CONFIG.server.defaultUrl;
+
+let baseUrl = DEFAULT_SERVER_URL;
 try {
-  baseUrl = localStorage.getItem('tongue.serverUrl') || '';
+  const saved = localStorage.getItem('tongue.serverUrl');
+  if (saved && saved.trim()) baseUrl = saved.trim().replace(/\/+$/, '');
 } catch (e) {
-  baseUrl = '';
+  baseUrl = DEFAULT_SERVER_URL;
 }
 
 let profileName = '';
@@ -79,11 +84,18 @@ export function getServerUrl() {
 }
 
 export function setServerUrl(url) {
-  baseUrl = (url || '').trim().replace(/\/+$/, '');
+  const v = (url || '').trim().replace(/\/+$/, '');
   try {
-    if (baseUrl) localStorage.setItem('tongue.serverUrl', baseUrl);
-    else localStorage.removeItem('tongue.serverUrl');
-  } catch (e) { /* ignore */ }
+    if (v) {
+      baseUrl = v;
+      localStorage.setItem('tongue.serverUrl', v);
+    } else {
+      baseUrl = DEFAULT_SERVER_URL;
+      localStorage.removeItem('tongue.serverUrl');
+    }
+  } catch (e) {
+    baseUrl = v || DEFAULT_SERVER_URL;
+  }
 }
 
 async function withTimeout(promise, ms) {
@@ -108,7 +120,7 @@ export async function classify(mask) {
       headers: { 'Content-Type': 'application/octet-stream', 'X-User-Id': getProfileKey() },
       body: mask,
     }),
-    3000,
+    CONFIG.server.classifyTimeoutMs,
   );
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return res.json();
@@ -122,7 +134,7 @@ export async function calibrate(name, mask) {
       headers: { 'Content-Type': 'application/json', 'X-User-Id': getProfileKey() },
       body: JSON.stringify({ name, mask: Array.from(mask) }),
     }),
-    5000,
+    CONFIG.server.calibrateTimeoutMs,
   );
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return res.json();
@@ -132,7 +144,7 @@ export async function calibrate(name, mask) {
 export async function listTemplates() {
   const res = await withTimeout(
     fetch(baseUrl + '/templates', { headers: { 'X-User-Id': getProfileKey() } }),
-    3000,
+    CONFIG.server.templatesTimeoutMs,
   );
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return res.json();

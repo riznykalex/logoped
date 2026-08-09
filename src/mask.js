@@ -1,6 +1,7 @@
 // mask.js — ROI рота, бінаризація, MORPH_OPEN, fit_to_square.
 // Вхід: ImageData повного кадру (після contrast/brightness та lighting),
 // landmarks (478 точок). Вихід: бінарна маска 0/255.
+import { CONFIG } from './config.js';
 
 export const INNER_LIPS_INDICES = [
   78, 191, 80, 81, 82, 13, 312, 311, 310, 415,
@@ -42,10 +43,10 @@ export function buildStateMask(imageData, landmarks, settings) {
   const b = lm(CORNERS.bottom);
   const mouthW = Math.abs(r.x - l.x);
   const mouthH = Math.abs(b.y - t.y);
-  const mouthClosed = mouthH < 8;
+  const mouthClosed = mouthH < CONFIG.mouth.closedH;
 
-  const marginX = Math.max(1, Math.round(mouthW * 0.4));
-  const marginY = Math.max(1, Math.round(mouthH * 1.2));
+  const marginX = Math.max(1, Math.round(mouthW * CONFIG.mouth.marginX));
+  const marginY = Math.max(1, Math.round(mouthH * CONFIG.mouth.marginY));
   const x1 = Math.max(0, Math.min(l.x, r.x) - marginX);
   const x2 = Math.min(w, Math.max(l.x, r.x) + marginX);
   const y1 = Math.max(0, t.y - marginY);

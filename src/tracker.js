@@ -4,6 +4,7 @@
 
 import { applyContrastBrightness, buildStateMask, fitToSquare } from './mask.js';
 import { normalizeFaceLighting } from './lighting.js';
+import { CONFIG } from './config.js';
 
 export class HoldFilter {
   /**
@@ -44,7 +45,7 @@ export class TongueTracker {
       cx: -1,
       faceDetected: false,
       mouthClosed: false,
-      normalized: new Uint8Array(64 * 64),
+      normalized: new Uint8Array(CONFIG.tracker.maskSize * CONFIG.tracker.maskSize),
       roiRect: null,
       lipRect: null,
       mouthRect: null,
@@ -78,7 +79,7 @@ export class TongueTracker {
       return { last, lit };
     }
 
-    const normalized = fitToSquare(maskInfo.mask, maskInfo.maskW, maskInfo.maskH, 64);
+    const normalized = fitToSquare(maskInfo.mask, maskInfo.maskW, maskInfo.maskH, CONFIG.tracker.maskSize);
     last.normalized = normalized;
 
     // Центр темряви патерну по X (~32 = центр, менше = зліва, більше = справа)

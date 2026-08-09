@@ -1,5 +1,7 @@
 // settings.js — кастомні повзунки (HTML <input type="range">).
-// Специ: Contrast 1.0–3.0, Brightness −100…+100, Light 0–200, Shadow 0–100 (%) → 0.0–1.0.
+// Діапазони й значення за замовчуванням — з config.js (CONFIG.sliders).
+
+import { CONFIG } from './config.js';
 
 export class SettingsUI {
   constructor(inputs) {
@@ -9,6 +11,13 @@ export class SettingsUI {
     this.onChange = null;
     for (const [key, el] of Object.entries(inputs)) {
       if (!el) continue;
+      const spec = CONFIG.sliders[key];
+      if (spec) {
+        el.min = spec.min;
+        el.max = spec.max;
+        el.step = spec.step;
+        el.value = spec.default;
+      }
       this.values[key] = parseFloat(el.value);
       el.addEventListener('input', () => {
         this.values[key] = parseFloat(el.value);

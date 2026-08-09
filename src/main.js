@@ -7,6 +7,7 @@ import { SettingsUI } from './settings.js';
 import { CalibrationUI } from './calibration.js';
 import { SnakeGame } from './games/snake.js';
 import { classify, getServerUrl, setServerUrl, listTemplates, getProfileKey, getProfileName, setProfileName } from './server.js';
+import { CONFIG } from './config.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -34,10 +35,13 @@ const settingsUI = new SettingsUI({
 });
 
 const tracker = new TongueTracker(settingsUI);
-const hold = new HoldFilter(80); // стабілізація: 80 мс (~1 запит при RTT 80 мс)
+const hold = new HoldFilter(CONFIG.hold.ms);
 const cal = new CalibrationUI();
 cal.onMessage = (msg) => setStatus(msg, 'info');
-const game = new SnakeGame({ stepMs: 450, cols: 10, rows: 11 }, els.gameCanvas);
+const game = new SnakeGame(
+  { stepMs: CONFIG.snake.stepMs, cols: CONFIG.snake.cols, rows: CONFIG.snake.rows },
+  els.gameCanvas,
+);
 
 let stream = null;
 let lastT = performance.now();
@@ -47,7 +51,7 @@ let mirror = true; // дзеркальний вигляд як у Python (cv2.fl
 
 // ---------- Класифікація через сервер ----------
 
-const CLASSIFY_INTERVAL = 50; // мінімальний інтервал між запитами (~20/с)
+const CLASSIFY_INTERVAL = CONFIG.classify.intervalMs;
 let pendingMask = null;       // найсвіжіша маска, що ще не надіслана
 let inFlight = false;         // один запит в польоті (порядок гарантовано)
 let lastSent = 0;
@@ -130,7 +134,8 @@ $('chkMirror').addEventListener('change', (e) => {
 els.serverUrl.value = getServerUrl();
 els.serverUrl.addEventListener('change', () => {
   setServerUrl(els.serverUrl.value);
-  setStatus('Server URL: ' + (getServerUrl() || '(поточний домен)'), 'info');
+  els.serverUrl.value = getServerUrl();
+  setStatus('Server URL: ' + getServerUrl(), 'info');
 });
 
 els.profileName.value = getProfileName();
@@ -150,18 +155,19 @@ const camCtx = els.cameraCanvas.getContext('2d');
 const tmp = document.createElement('canvas');
 const tmpCtx = tmp.getContext('2d', { willReadFrequently: true });
 
-function drawMaskToPanel(panel, arr64, label) {
+function drawMaskToPanel(panel, arr, label) {
   const ctx = panel.getContext('2d');
-  const img = new ImageData(64, 64);
-  for (let i = 0; i < 4096; i++) {
-    const v = arr64[i];
+  const m = CONFIG.tracker.maskSize;
+  const img = new ImageData(m, m);
+  for (let i = 0; i < m * m; i++) {
+    const v = arr[i];
     img.data[i * 4] = v;
     img.data[i * 4 + 1] = v;
     img.data[i * 4 + 2] = v;
     img.data[i * 4 + 3] = 255;
   }
-  tmp.width = 64;
-  tmp.height = 64;
+  tmp.width = m;
+  tmp.height = m;
   tmpCtx.putImageData(img, 0, 0);
   ctx.clearRect(0, 0, 128, 128);
   ctx.imageSmoothingEnabled = false;
@@ -238,7 +244,7 @@ function drawMatchedPanel(last) {
 
 function drawPanels(last) {
   // Camera View — бінарна маска зони захоплення (чорно-біла)
-  drawMaskToPanel(els.cvPanel, last.normalized || new Uint8Array(4096), { text: 'Camera View', color: '#ff0000' });
+  drawMaskToPanel(els.cvPanel, last.normalized || new Uint8Array(CONFIG.tracker.maskSize * CONFIG.tracker.maskSize), { text: 'Camera View', color: '#ff0000' });
   // Matched — стан з сервера (еталони на сервері, клієнту недоступні)
   drawMatchedPanel(last);
 }
@@ -289,7 +295,7 @@ function tick() {
       camCtx.font = 'bold 22px system-ui, sans-serif';
       camCtx.fillStyle = '#ff0000';
       camCtx.fillText('FACE NOT DETECTED', 20, 40);
-      if (now - lastFaceSeen > 2000) {
+      if (now - lastFaceSeen > CONFIG.face.lostPauseMs) {
         hold.reset();
         game.onState('NEUTRAL');
       }
