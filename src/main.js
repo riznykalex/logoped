@@ -6,7 +6,7 @@ import { TongueTracker, HoldFilter } from './tracker.js';
 import { SettingsUI } from './settings.js';
 import { CalibrationUI } from './calibration.js';
 import { SnakeGame } from './games/snake.js';
-import { classify, getServerUrl, setServerUrl, listTemplates } from './server.js';
+import { classify, getServerUrl, setServerUrl, listTemplates, getProfileKey, getProfileName, setProfileName } from './server.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -18,6 +18,7 @@ const els = {
   gameCanvas: $('gameCanvas'),
   camSelect: $('camSelect'),
   serverUrl: $('serverUrl'),
+  profileName: $('profileName'),
   status: $('status'),
   btnCalibrate: $('btnCalibrate'),
   arrows: {
@@ -130,6 +131,13 @@ els.serverUrl.value = getServerUrl();
 els.serverUrl.addEventListener('change', () => {
   setServerUrl(els.serverUrl.value);
   setStatus('Server URL: ' + (getServerUrl() || '(поточний домен)'), 'info');
+});
+
+els.profileName.value = getProfileName();
+els.profileName.addEventListener('change', () => {
+  setProfileName(els.profileName.value);
+  els.profileName.value = getProfileName();
+  setStatus('Профіль: ' + getProfileKey(), 'info');
 });
 
 // ---------- Відображення ----------
@@ -383,10 +391,11 @@ async function boot() {
   setStatus('Модель завантажена, шукаємо камеру…', 'info');
 
   try {
-    const names = await listTemplates();
+    const data = await listTemplates();
+    const calib = data.calibrated || [];
     setStatus(
-      'Сервер класифікації доступний. Еталони: ' +
-        (names.length ? names.join(', ') : 'тільки синтетичні (калібруйте)'),
+      'Сервер класифікації доступний. Профіль ' + getProfileKey() + ' — відкалібровано: ' +
+        (calib.length ? calib.join(', ') : 'нічого (тільки синтетика, калібруйте)'),
       'info',
     );
   } catch (e) {
