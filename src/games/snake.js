@@ -21,7 +21,22 @@ export class SnakeGame {
     this.cols = (settings && settings.cols) || 10;
     this.rows = (settings && settings.rows) || 11;
     this.stepMs = (settings && settings.stepMs) || 450;
+    this._layout();
     this.reset();
+  }
+
+  /** Квадратні клітинки + центрування поля на будь-якому співвідношенні сторін. */
+  _layout() {
+    this.w = this.canvas.width;
+    this.h = this.canvas.height;
+    this.cell = Math.min(this.w / this.cols, this.h / this.rows);
+    this.ox = (this.w - this.cols * this.cell) / 2;
+    this.oy = (this.h - this.rows * this.cell) / 2;
+  }
+
+  /** Викликається, коли розмір канваса змінився (поворот/повноекранний режим). */
+  resize() {
+    this._layout();
   }
 
   reset() {
@@ -88,20 +103,21 @@ export class SnakeGame {
 
   draw() {
     const c = this.ctx;
-    const w = this.canvas.width;
-    const h = this.canvas.height;
-    const cw = w / this.cols;
-    const ch = h / this.rows;
+    const w = this.w;
+    const h = this.h;
+    const cell = this.cell;
+    const ox = this.ox;
+    const oy = this.oy;
     c.fillStyle = '#12121c';
     c.fillRect(0, 0, w, h);
 
     c.strokeStyle = 'rgba(255,255,255,0.05)';
     c.lineWidth = 1;
     for (let x = 1; x < this.cols; x++) {
-      c.beginPath(); c.moveTo(x * cw, 0); c.lineTo(x * cw, h); c.stroke();
+      c.beginPath(); c.moveTo(ox + x * cell, oy); c.lineTo(ox + x * cell, oy + this.rows * cell); c.stroke();
     }
     for (let y = 1; y < this.rows; y++) {
-      c.beginPath(); c.moveTo(0, y * ch); c.lineTo(w, y * ch); c.stroke();
+      c.beginPath(); c.moveTo(ox, oy + y * cell); c.lineTo(ox + this.cols * cell, oy + y * cell); c.stroke();
     }
 
     for (let i = this.snake.length - 1; i >= 1; i--) {
@@ -109,16 +125,16 @@ export class SnakeGame {
       const a = 0.85 - (i / this.snake.length) * 0.35;
       c.fillStyle = `rgba(56, 200, 90, ${a})`;
       c.beginPath();
-      c.roundRect(s.x * cw + 2, s.y * ch + 2, cw - 4, ch - 4, 6);
+      c.roundRect(ox + s.x * cell + 2, oy + s.y * cell + 2, cell - 4, cell - 4, 6);
       c.fill();
     }
 
     if (this.snake.length) {
       const hd = this.snake[0];
-      this._emoji(hd.x * cw + cw / 2, hd.y * ch + ch / 2, cw, HEAD_EMOJI);
+      this._emoji(ox + hd.x * cell + cell / 2, oy + hd.y * cell + cell / 2, cell, HEAD_EMOJI);
     }
     if (this.fruit) {
-      this._emoji(this.fruit.x * cw + cw / 2, this.fruit.y * ch + ch / 2, cw, this.fruit.emoji);
+      this._emoji(ox + this.fruit.x * cell + cell / 2, oy + this.fruit.y * cell + cell / 2, cell, this.fruit.emoji);
     }
 
     c.fillStyle = '#fff';

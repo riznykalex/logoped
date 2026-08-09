@@ -1,12 +1,13 @@
 // main.js — збірка: камера, конвеєр, класифікація через сервер, гра.
 // Template Matching винесено на сервер (server.py): браузер надсилає
 // маску 64×64, сервер повертає стан (UP/DOWN/LEFT/RIGHT/OPENED).
+// UI: 3 екрани — камера / калібрування / гра (див. index.html).
 import { initFaceLandmarker, detectFace, isFaceLandmarkerReady } from './facemesh.js';
 import { TongueTracker, HoldFilter } from './tracker.js';
 import { SettingsUI } from './settings.js';
 import { CalibrationUI } from './calibration.js';
 import { SnakeGame } from './games/snake.js';
-import { classify, listTemplates, getProfileKey, getProfileName, setProfileName } from './server.js';
+import { classify, listTemplates, getProfileKey } from './server.js';
 import { CONFIG } from './config.js';
 
 const $ = (id) => document.getElementById(id);
@@ -14,16 +15,11 @@ const $ = (id) => document.getElementById(id);
 const els = {
   video: $('video'),
   cameraCanvas: $('cameraCanvas'),
+  calibCanvas: $('calibCanvas'),
   cvPanel: $('cvPanel'),
-  mtPanel: $('mtPanel'),
   gameCanvas: $('gameCanvas'),
   camSelect: $('camSelect'),
-  profileName: $('profileName'),
-  status: $('status'),
-  btnCalibrate: $('btnCalibrate'),
-  arrows: {
-    up: $('btnUp'), down: $('btnDown'), left: $('btnLeft'), right: $('btnRight'), open: $('btnOpen'),
-  },
+  statusText: $('statusText'),
 };
 
 const settingsUI = new SettingsUI({
@@ -46,7 +42,7 @@ let stream = null;
 let lastT = performance.now();
 let lastFaceSeen = performance.now();
 let initialized = false;
-let mirror = true; // дзеркальний вигляд як у Python (cv2.flip(frame, 1)) — ввімкнено за замовчуванням
+const mirror = true; // дзеркальний вигляд як у Python (cv2.flip(frame, 1)) — завжди ввімкнено
 
 // ---------- Класифікація через сервер ----------
 
@@ -126,17 +122,6 @@ els.camSelect.addEventListener('change', () => {
   startCamera(els.camSelect.value).catch((e) => setStatus('Камера: ' + e.message, 'error'));
 });
 
-$('chkMirror').addEventListener('change', (e) => {
-  mirror = e.target.checked;
-});
-
-els.profileName.value = getProfileName();
-els.profileName.addEventListener('change', () => {
-  setProfileName(els.profileName.value);
-  els.profileName.value = getProfileName();
-  setStatus('Профіль: ' + getProfileKey(), 'info');
-});
-
 // ---------- Відображення ----------
 
 const frameCanvas = document.createElement('canvas');
@@ -144,6 +129,7 @@ const frameCtx = frameCanvas.getContext('2d', { willReadFrequently: true });
 const litCanvas = document.createElement('canvas');
 const litCtx = litCanvas.getContext('2d', { willReadFrequently: true });
 const camCtx = els.cameraCanvas.getContext('2d');
+const calibCtx = els.calibCanvas.getContext('2d');
 const tmp = document.createElement('canvas');
 const tmpCtx = tmp.getContext('2d', { willReadFrequently: true });
 
@@ -208,43 +194,86 @@ function drawFrame(ctx) {
   ctx.drawImage(tmp, 0, 0);
 }
 
+/** Малюємо кадр на обидва видимих канваси (екран камери і екран калібрування). */
+function paintVisible() {
+  drawFrame(camCtx);
+  drawFrame(calibCtx);
+}
+
 function showRawCamera(raw) {
   tmp.width = raw.width;
   tmp.height = raw.height;
   tmpCtx.putImageData(raw, 0, 0);
-  drawFrame(camCtx);
-}
-
-function drawMatchedPanel(last) {
-  const ctx = els.mtPanel.getContext('2d');
-  ctx.fillStyle = '#0a0a12';
-  ctx.fillRect(0, 0, 128, 128);
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#00ff00';
-  ctx.font = 'bold 22px system-ui, sans-serif';
-  ctx.fillText(last.state || 'NEUTRAL', 64, 60);
-  ctx.fillStyle = '#888';
-  ctx.font = '13px system-ui, sans-serif';
-  ctx.fillText('MSE: ' + Math.round(last.dist), 64, 92);
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'top';
-  ctx.fillStyle = '#00ff00';
-  ctx.font = '12px system-ui, sans-serif';
-  ctx.fillText('Matched', 5, 15);
+  paintVisible();
 }
 
 function drawPanels(last) {
   // Camera View — бінарна маска зони захоплення (чорно-біла)
   drawMaskToPanel(els.cvPanel, last.normalized || new Uint8Array(CONFIG.tracker.maskSize * CONFIG.tracker.maskSize), { text: 'Camera View', color: '#ff0000' });
-  // Matched — стан з сервера (еталони на сервері, клієнту недоступні)
-  drawMatchedPanel(last);
 }
 
 function setStatus(text, kind) {
-  els.status.textContent = text;
-  els.status.className = 'status ' + (kind || '');
+  if (!els.statusText) return;
+  els.statusText.textContent = text;
+  els.statusText.className = 'status-text' + (kind === 'error' ? ' error' : kind === 'warn' ? ' warn' : '');
 }
+
+// ---------- Калібрування (новий екран) ----------
+
+const CALIB_BTN_IDS = {
+  UP: 'btnCalibUp',
+  DOWN: 'btnCalibDown',
+  LEFT: 'btnCalibLeft',
+  RIGHT: 'btnCalibRight',
+  OPENED: 'btnCalibOpen',
+};
+
+const CALIB_HINTS = {
+  UP: 'Язик вгору — зафіксовано ✓',
+  DOWN: 'Язик вниз — зафіксовано ✓',
+  LEFT: 'Язик вліво — зафіксовано ✓',
+  RIGHT: 'Язик вправо — зафіксовано ✓',
+  OPENED: 'Рот відкритий — зафіксовано ✓',
+};
+
+function enablePlayIfReady() {
+  const ready = cal.allCaptured;
+  const play = $('btnCalibPlay');
+  const go = $('btnGoGame');
+  if (play) play.disabled = !ready;
+  if (go) go.disabled = !ready;
+}
+
+/** Позначає кнопки як зроблені за списком, підтвердженим сервером. */
+function syncCalibrationUI(calibrated) {
+  const names = calibrated || [];
+  for (const [name, id] of Object.entries(CALIB_BTN_IDS)) {
+    const btn = $(id);
+    if (btn && names.includes(name)) {
+      btn.classList.add('done');
+      cal.captured.add(name);
+    }
+  }
+  enablePlayIfReady();
+}
+
+// Викликається з index.html при кліку на .calib-btn.
+window.__calibCapture = async (state, btn) => {
+  const hint = $('calibHint');
+  try {
+    const ok = await cal.capture(state, () => tracker.last.normalized);
+    if (ok) {
+      btn.classList.add('done');
+      if (hint) hint.textContent = CALIB_HINTS[state] || 'Зафіксовано ✓';
+      enablePlayIfReady();
+    } else if (hint) {
+      hint.textContent = 'Маска порожня — висуньте язик (або відкрийте рот для 👅) і повторіть';
+    }
+  } catch (e) {
+    if (hint) hint.textContent = 'Не вдалося зберегти еталон: ' + e.message;
+    setStatus('Не вдалося зберегти еталон: ' + e.message, 'error');
+  }
+};
 
 // ---------- Головний цикл ----------
 
@@ -252,6 +281,11 @@ function tick() {
   const now = performance.now();
   const dt = Math.min(0.1, Math.max(0, (now - lastT) / 1000));
   lastT = now;
+
+  // Канвас гри міг змінити розмір (поворот екрана) — перекомпонувати сітку.
+  if (game.w !== game.canvas.width || game.h !== game.canvas.height) {
+    game.resize();
+  }
 
   if (!initialized) {
     requestAnimationFrame(tick);
@@ -266,6 +300,8 @@ function tick() {
       frameCanvas.height = vh;
       els.cameraCanvas.width = vw;
       els.cameraCanvas.height = vh;
+      els.calibCanvas.width = vw;
+      els.calibCanvas.height = vh;
     }
 
     frameCtx.save();
@@ -287,6 +323,9 @@ function tick() {
       camCtx.font = 'bold 22px system-ui, sans-serif';
       camCtx.fillStyle = '#ff0000';
       camCtx.fillText('FACE NOT DETECTED', 20, 40);
+      calibCtx.font = 'bold 22px system-ui, sans-serif';
+      calibCtx.fillStyle = '#ff0000';
+      calibCtx.fillText('FACE NOT DETECTED', 20, 40);
       if (now - lastFaceSeen > CONFIG.face.lostPauseMs) {
         hold.reset();
         game.onState('NEUTRAL');
@@ -299,9 +338,7 @@ function tick() {
     }
     lastFaceSeen = now;
 
-    const lms = mirror
-      ? rawLms.map((lm) => ({ x: 1 - lm.x, y: lm.y, z: lm.z }))
-      : rawLms;
+    const lms = rawLms.map((lm) => ({ x: 1 - lm.x, y: lm.y, z: lm.z }));
     const { last, lit } = tracker.process(raw, lms);
 
     // Показуємо оброблений кадр з урахуванням Mirror
@@ -311,9 +348,10 @@ function tick() {
     tmp.width = vw;
     tmp.height = vh;
     tmpCtx.drawImage(litCanvas, 0, 0);
-    drawFrame(camCtx);
+    paintVisible();
 
     drawOverlays(camCtx, vw, vh, last);
+    drawOverlays(calibCtx, vw, vh, last);
     drawPanels(last);
 
     // Рот закритий — маску не надсилаємо, стан = NEUTRAL (як у Python),
@@ -337,35 +375,6 @@ function tick() {
 
   requestAnimationFrame(tick);
 }
-// ---------- Калібрування ----------
-
-function refreshCalibrationUI() {
-  cal.refreshButtons({
-    calibrate: els.btnCalibrate,
-    up: els.arrows.up,
-    down: els.arrows.down,
-    left: els.arrows.left,
-    right: els.arrows.right,
-    open: els.arrows.open,
-  });
-  if (cal.enabled) setStatus('CALIBRATION MODE: відтворіть позицію і натисніть стрілку', 'warn');
-}
-
-els.btnCalibrate.addEventListener('click', () => {
-  cal.toggle();
-  refreshCalibrationUI();
-});
-
-for (const [key, name] of Object.entries({ up: 'UP', down: 'DOWN', left: 'LEFT', right: 'RIGHT', open: 'OPENED' })) {
-  els.arrows[key].addEventListener('click', async () => {
-    try {
-      await cal.capture(name, () => tracker.last.normalized);
-    } catch (e) {
-      setStatus('Не вдалося зберегти еталон: ' + e.message, 'error');
-    }
-    refreshCalibrationUI();
-  });
-}
 
 // ---------- Клавіші ----------
 
@@ -375,6 +384,10 @@ window.addEventListener('keydown', (e) => {
     hold.reset();
     setStatus('Гру перезапущено', 'info');
   }
+});
+
+window.addEventListener('resize', () => {
+  if (game.resize) game.resize();
 });
 
 // ---------- Старт ----------
@@ -391,6 +404,7 @@ async function boot() {
   try {
     const data = await listTemplates();
     const calib = data.calibrated || [];
+    syncCalibrationUI(calib);
     setStatus(
       'Сервер класифікації доступний. Профіль ' + getProfileKey() + ' — відкалібровано: ' +
         (calib.length ? calib.join(', ') : 'нічого (тільки синтетика, калібруйте)'),

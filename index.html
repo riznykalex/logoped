@@ -2,177 +2,497 @@
 <html lang="uk">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tongue Control — Web</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Tongue Control</title>
   <style>
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      background: #181820;
+    /* ── Reset & base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #0e0e16;
       color: #e8e8f0;
-      font-family: system-ui, sans-serif;
+      font-family: system-ui, -apple-system, sans-serif;
+      overflow: hidden;
+      touch-action: manipulation;
     }
-    header {
+
+    /* ── Screen system ── */
+    .screen {
+      position: fixed; inset: 0;
+      display: none;
+      flex-direction: column;
+    }
+    .screen.active { display: flex; }
+
+    /* ════════════════════════════════
+       ЕКРАН 1 — КАМЕРА
+    ════════════════════════════════ */
+    #screenCamera {
+      background: #000;
+    }
+
+    /* Камера — на весь екран */
+    #cameraCanvas {
+      flex: 1;
+      width: 100%;
+      object-fit: cover;
+      display: block;
+      cursor: pointer;
+    }
+
+    /* Camera View — правий верхній кут */
+    #cvCorner {
+      position: absolute;
+      top: 12px; right: 12px;
+      width: 96px; height: 96px;
+      border-radius: 10px;
+      border: 2px solid rgba(255,255,255,0.25);
+      background: #000;
+      overflow: hidden;
+      pointer-events: none;
+    }
+    #cvPanel {
+      width: 100%; height: 100%;
+      display: block;
+    }
+
+    /* Вибір камери — лівий верхній кут */
+    #camSelectWrap {
+      position: absolute;
+      top: 12px; left: 12px;
+    }
+    #camSelect {
+      background: rgba(20,20,32,0.75);
+      color: #e8e8f0;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 14px;
+      backdrop-filter: blur(6px);
+      max-width: 160px;
+    }
+
+    /* Overlay повзунків — поверх камери */
+    #sliderOverlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.55);
+      backdrop-filter: blur(4px);
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      padding: 24px 20px;
+      gap: 18px;
+    }
+    #sliderOverlay.open { display: flex; }
+
+    #sliderOverlay .close-btn {
+      position: absolute;
+      top: 14px; right: 14px;
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.12);
+      border: none;
+      color: #fff;
+      font-size: 22px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    .slider-row {
       display: flex;
       align-items: center;
       gap: 12px;
-      padding: 8px 14px;
-      background: #20202c;
-      border-bottom: 1px solid #333;
-      flex-wrap: wrap;
     }
-    header h1 { font-size: 18px; margin: 0; margin-right: 8px; }
-    select, button, .file-btn {
-      background: #2a2a3a;
-      color: #e8e8f0;
-      border: 1px solid #444;
-      border-radius: 6px;
-      padding: 6px 12px;
-      font-size: 14px;
+    .slider-row label {
+      width: 110px;
+      font-size: 15px;
+      color: #c8c8d8;
+      flex-shrink: 0;
+    }
+    .slider-row input[type=range] {
+      flex: 1;
+      height: 36px;
+      accent-color: #8fd08f;
       cursor: pointer;
     }
-    button:hover, select:hover { background: #34344a; }
-    button.active { background: #d4362b; border-color: #ff6b5e; }
-    button:disabled { opacity: 0.4; cursor: default; }
-    .status { flex: 1; text-align: right; font-size: 13px; min-width: 200px; }
-    .status.warn { color: #ffc800; }
-    .status.error { color: #ff5c5c; }
-    .status.info { color: #8fd08f; }
+    .slider-row output {
+      width: 44px;
+      text-align: right;
+      font-size: 14px;
+      color: #8fd08f;
+      flex-shrink: 0;
+    }
 
-    .app { display: flex; gap: 14px; padding: 14px; flex-wrap: wrap; }
+    /* Нижня панель кнопок екрану 1 */
+    #cameraFooter {
+      display: flex;
+      gap: 12px;
+      padding: 16px;
+      background: rgba(10,10,20,0.85);
+      backdrop-filter: blur(6px);
+      position: relative; /* поверх overlay */
+      z-index: 10;
+    }
+    #cameraFooter .status-text {
+      flex: 1;
+      font-size: 13px;
+      color: #8fd08f;
+      display: flex;
+      align-items: center;
+    }
+    #cameraFooter .status-text.warn { color: #ffc800; }
+    #cameraFooter .status-text.error { color: #ff5c5c; }
 
-    .col { display: flex; flex-direction: column; gap: 10px; }
+    /* ════════════════════════════════
+       ЕКРАН 2 — КАЛІБРУВАННЯ
+    ════════════════════════════════ */
+    #screenCalib {
+      background: #0e0e16;
+    }
 
-    .cam-wrap { position: relative; width: 480px; }
-    #cameraCanvas { width: 100%; display: block; border-radius: 8px; background: #000; }
-    .sliders { width: 480px; }
-    .sliders .row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
-    .sliders label { width: 150px; font-size: 13px; color: #b8b8c8; }
-    .sliders input[type=range] { flex: 1; }
-    .sliders output { width: 46px; text-align: right; font-size: 13px; color: #8fd08f; }
+    #calibHint {
+      padding: 16px 18px 10px;
+      font-size: 17px;
+      font-weight: 600;
+      color: #e8e8f0;
+      line-height: 1.4;
+      text-align: center;
+      min-height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
 
-    .panel {
-      width: 128px; height: 128px;
+    #calibCamWrap {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+    #calibCamWrap canvas {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    /* Хрест кнопок калібрування */
+    #calibButtons {
+      padding: 14px 16px;
+      background: rgba(10,10,20,0.9);
+      backdrop-filter: blur(6px);
+    }
+    .calib-cross {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-rows: auto auto auto;
+      gap: 8px;
+      max-width: 300px;
+      margin: 0 auto;
+    }
+    .calib-cross .cell {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .calib-cross .cell.empty { visibility: hidden; }
+
+    .calib-btn {
+      width: 80px; height: 56px;
+      border-radius: 12px;
+      border: 2px solid #444;
+      background: #1e1e2e;
+      color: #e8e8f0;
+      font-size: 22px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      transition: background .15s, border-color .15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .calib-btn:active { transform: scale(0.95); }
+    .calib-btn.done {
+      background: #1a3a1a;
+      border-color: #4caf50;
+    }
+    .calib-btn.done::after {
+      content: '✓';
+      position: absolute;
+      top: 2px; right: 5px;
+      font-size: 12px;
+      color: #4caf50;
+    }
+    #btnCalibOpen {
+      width: 80px; height: 56px;
+      background: #3a1a1a;
+      border-color: #7a2a2a;
+    }
+    #btnCalibOpen.done {
+      background: #1a3a1a;
+      border-color: #4caf50;
+    }
+
+    #calibFooter {
+      display: flex;
+      gap: 12px;
+      padding: 14px 16px;
+      background: rgba(10,10,20,0.9);
+      backdrop-filter: blur(6px);
+    }
+
+    /* ════════════════════════════════
+       ЕКРАН 3 — ГРА
+    ════════════════════════════════ */
+    #screenGame {
       background: #000;
-      border: 1px solid #555;
-      border-radius: 8px;
       position: relative;
     }
-    /* На вузьких екранах Camera View і Matched — в один ряд */
-    @media (max-width: 1280px) {
-      .panels-col { flex-direction: row; align-items: center; }
+    #gameCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
     }
-    .grid { display: grid; grid-template-columns: auto auto auto; gap: 6px; align-items: center; justify-content: start; }
-    .grid .mid { grid-row: 2; grid-column: 2; }
-    .grid .nw { grid-row: 1; grid-column: 1; }
-    .grid .n { grid-row: 1; grid-column: 2; }
-    .grid .ne { grid-row: 1; grid-column: 3; }
-    .grid .w { grid-row: 2; grid-column: 1; }
-    .grid .e { grid-row: 2; grid-column: 3; }
-    .grid .sw { grid-row: 3; grid-column: 1; }
-    .grid .s { grid-row: 3; grid-column: 2; }
-    .grid .se { grid-row: 3; grid-column: 3; }
-    .arrow-btn { width: 42px; height: 34px; padding: 0; font-size: 12px; }
-    #btnOpen { background: #7a1f1f; }
-
-    .game-wrap { width: 400px; }
-    #gameCanvas { width: 400px; height: 440px; display: block; border-radius: 8px; background: #000; }
-
-    .help {
-      font-size: 12px; color: #a0a0b0; background: #20202c;
-      border: 1px solid #333; border-radius: 8px; padding: 8px 12px; line-height: 1.5;
-      max-width: 480px;
-    }
-    kbd {
-      background: #333; border: 1px solid #555; border-radius: 4px;
-      padding: 1px 6px; font-family: inherit; font-size: 12px;
-    }
-    .mirror-toggle {
-      font-size: 13px; color: #b8b8c8; display: flex; align-items: center; gap: 5px;
+    #btnBackToCamera {
+      position: absolute;
+      top: 12px; right: 12px;
+      width: 48px; height: 48px;
+      border-radius: 50%;
+      background: rgba(20,20,32,0.75);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: #e8e8f0;
+      font-size: 22px;
       cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      backdrop-filter: blur(4px);
+      z-index: 10;
     }
-    .mirror-toggle input { accent-color: #8fd08f; width: 15px; height: 15px; }
-    video { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+    /* ════════════════════════════════
+       Спільні кнопки
+    ════════════════════════════════ */
+    .btn-primary {
+      flex: 1;
+      height: 52px;
+      border-radius: 14px;
+      border: none;
+      background: #2a6a2a;
+      color: #fff;
+      font-size: 17px;
+      font-weight: 700;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: background .15s;
+    }
+    .btn-primary:active { background: #1f5020; }
+    .btn-primary:disabled { opacity: 0.4; cursor: default; }
+
+    .btn-secondary {
+      flex: 1;
+      height: 52px;
+      border-radius: 14px;
+      border: 1px solid #444;
+      background: #1e1e2e;
+      color: #e8e8f0;
+      font-size: 17px;
+      font-weight: 600;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: background .15s;
+    }
+    .btn-secondary:active { background: #2a2a3e; }
+
+    /* Прихований video елемент */
+    video {
+      position: fixed; top: 0; left: 0;
+      width: 1px; height: 1px;
+      opacity: 0; pointer-events: none;
+    }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Tongue Control</h1>
-    <select id="camSelect" title="Камера"></select>
-    <input type="text" id="profileName" placeholder="Профіль (необов.)" title="Ім'я профілю: еталони зберігаються окремо для кожного. Порожнє — автопрофіль цього браузера" />
-    <button id="btnCalibrate" title="Режим калібрування еталонів">Calibrate</button>
-    <label class="mirror-toggle" title="Показувати як у дзеркалі (як Zoom) чи сирий кадр">
-      <input type="checkbox" id="chkMirror" checked /> Mirror
-    </label>
-    <div id="status" class="status">Ініціалізація…</div>
-  </header>
 
-  <div class="app">
-    <div class="col">
-      <div class="cam-wrap">
-        <canvas id="cameraCanvas" width="480" height="270"></canvas>
+  <!-- ══════════════════════════════
+       ЕКРАН 1 — КАМЕРА
+  ══════════════════════════════ -->
+  <div id="screenCamera" class="screen active">
+
+    <canvas id="cameraCanvas" width="640" height="480"></canvas>
+
+    <!-- Camera View у куті -->
+    <div id="cvCorner">
+      <canvas id="cvPanel" width="128" height="128"></canvas>
+    </div>
+
+    <!-- Вибір камери -->
+    <div id="camSelectWrap">
+      <select id="camSelect"></select>
+    </div>
+
+    <!-- Overlay повзунків (клік на камеру) -->
+    <div id="sliderOverlay">
+      <button class="close-btn" id="btnCloseSliders">✕</button>
+      <div class="slider-row">
+        <label for="slContrast">☀️ Контраст</label>
+        <input type="range" id="slContrast" min="1" max="3" value="1.0" step="0.1" />
+        <output id="outContrast">1.0</output>
       </div>
-      <div class="sliders">
-        <div class="row">
-          <label for="slContrast">Contrast</label>
-          <input type="range" id="slContrast" min="1" max="3" value="1.0" step="0.1" />
-          <output id="outContrast">1.0</output>
-        </div>
-        <div class="row">
-          <label for="slBrightness">Brightness</label>
-          <input type="range" id="slBrightness" min="-100" max="100" value="0" step="1" />
-          <output id="outBrightness">0</output>
-        </div>
-        <div class="row">
-          <label for="slLight">Lighting</label>
-          <input type="range" id="slLight" min="0" max="200" value="100" step="1" />
-          <output id="outLight">100</output>
-        </div>
-        <div class="row">
-          <label for="slShadow">Shadow threshold</label>
-          <input type="range" id="slShadow" min="0" max="100" value="70" step="1" />
-          <output id="outShadow">0.70</output>
-        </div>
+      <div class="slider-row">
+        <label for="slBrightness">🎨 Яскравість</label>
+        <input type="range" id="slBrightness" min="-100" max="100" value="0" step="1" />
+        <output id="outBrightness">0</output>
       </div>
-      <div class="help">
-        <b>Як працює:</b> спочатку пройдіть <b>калібрування</b> (кнопка Calibrate),
-        потім послідовно висуньте язик в кожну позицію і натисніть відповідну стрілку,
-        потім відкрийте рот і натисніть <b>OPEN</b>. Еталони зберігаються на сервері
-        класифікації (адреса зашита в config.js).
-        Поле <b>Профіль</b> — ім'я, під яким зберігаються еталони (у кожного свій
-        набір); порожнє = автопрофіль цього браузера.
-        Потім грайте в змійку 🐸: язик задає напрямок (UP/DOWN/LEFT/RIGHT),
-        <b>NEUTRAL</b> — пауза. Ловіть фрукти 🍎🍒🥝. Зіткнень немає —
-        стіни переносять на інший бік.
-        <kbd>R</kbd> — перезапуск гри. Пункт <b>Mirror</b> у шапці ввімкнено за
-        замовчуванням (як у Python — дзеркальний вигляд камери); зніміть галочку
-        для сирого кадру. Якщо зміни не застосувалися — оновіть сторінку через
-        <kbd>Ctrl+F5</kbd>.
+      <div class="slider-row">
+        <label for="slLight">💡 Освітлення</label>
+        <input type="range" id="slLight" min="0" max="200" value="100" step="1" />
+        <output id="outLight">100</output>
+      </div>
+      <div class="slider-row">
+        <label for="slShadow">🌑 Тінь</label>
+        <input type="range" id="slShadow" min="0" max="100" value="70" step="1" />
+        <output id="outShadow">0.70</output>
       </div>
     </div>
 
-    <div class="col panels-col">
-      <div class="grid">
-        <div class="nw"></div>
-        <div class="n"><button id="btnUp" class="arrow-btn" hidden>UP</button></div>
-        <div class="ne"></div>
-        <div class="w"><button id="btnLeft" class="arrow-btn" hidden>LEFT</button></div>
-        <div class="mid"><canvas id="cvPanel" class="panel" width="128" height="128"></canvas></div>
-        <div class="e"><button id="btnRight" class="arrow-btn" hidden>RIGHT</button></div>
-        <div class="sw"></div>
-        <div class="s"><button id="btnDown" class="arrow-btn" hidden>DOWN</button></div>
-        <div class="se"><button id="btnOpen" class="arrow-btn" hidden>OPEN</button></div>
-      </div>
-      <canvas class="panel" id="mtPanel" width="128" height="128"></canvas>
+    <!-- Нижня панель -->
+    <div id="cameraFooter">
+      <span id="statusText" class="status-text warn">Ініціалізація…</span>
+      <button class="btn-secondary" id="btnGoCalib">🎯 Калібрування</button>
+      <button class="btn-primary"   id="btnGoGame"  disabled>▶ Грати</button>
     </div>
 
-    <div class="col game-wrap">
-      <canvas id="gameCanvas" width="400" height="440"></canvas>
-    </div>
   </div>
 
-  <video id="video" autoplay playsinline></video>
+  <!-- ══════════════════════════════
+       ЕКРАН 2 — КАЛІБРУВАННЯ
+  ══════════════════════════════ -->
+  <div id="screenCalib" class="screen">
 
+    <div id="calibHint">Покажіть язик і натисніть потрібну кнопку</div>
+
+    <div id="calibCamWrap">
+      <canvas id="calibCanvas" width="640" height="480"></canvas>
+    </div>
+
+    <div id="calibButtons">
+      <div class="calib-cross">
+        <!-- Рядок 1 -->
+        <div class="cell empty"></div>
+        <div class="cell">
+          <button class="calib-btn" id="btnCalibUp"    data-state="UP">⬆️</button>
+        </div>
+        <div class="cell empty"></div>
+        <!-- Рядок 2 -->
+        <div class="cell">
+          <button class="calib-btn" id="btnCalibLeft"  data-state="LEFT">⬅️</button>
+        </div>
+        <div class="cell">
+          <button class="calib-btn" id="btnCalibOpen"  data-state="OPENED">👅</button>
+        </div>
+        <div class="cell">
+          <button class="calib-btn" id="btnCalibRight" data-state="RIGHT">➡️</button>
+        </div>
+        <!-- Рядок 3 -->
+        <div class="cell empty"></div>
+        <div class="cell">
+          <button class="calib-btn" id="btnCalibDown"  data-state="DOWN">⬇️</button>
+        </div>
+        <div class="cell empty"></div>
+      </div>
+    </div>
+
+    <div id="calibFooter">
+      <button class="btn-secondary" id="btnCalibBack">← Назад</button>
+      <button class="btn-primary"   id="btnCalibPlay">▶ Грати</button>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════
+       ЕКРАН 3 — ГРА
+  ══════════════════════════════ -->
+  <div id="screenGame" class="screen">
+    <canvas id="gameCanvas" width="400" height="440"></canvas>
+    <button id="btnBackToCamera">⚙️</button>
+  </div>
+
+  <video id="video" autoplay playsinline muted></video>
+
+  <script>
+    // ── Навігація між екранами ──────────────────────────────
+    function showScreen(id) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+    }
+
+    document.getElementById('btnGoCalib').addEventListener('click',
+      () => showScreen('screenCalib'));
+    document.getElementById('btnGoGame').addEventListener('click',
+      () => { resizeGame(); showScreen('screenGame'); });
+    document.getElementById('btnCalibBack').addEventListener('click',
+      () => showScreen('screenCamera'));
+    document.getElementById('btnCalibPlay').addEventListener('click',
+      () => { resizeGame(); showScreen('screenGame'); });
+    document.getElementById('btnBackToCamera').addEventListener('click',
+      () => showScreen('screenCamera'));
+
+    // ── Overlay повзунків ───────────────────────────────────
+    const sliderOverlay = document.getElementById('sliderOverlay');
+
+    document.getElementById('cameraCanvas').addEventListener('click', () => {
+      sliderOverlay.classList.add('open');
+    });
+    document.getElementById('btnCloseSliders').addEventListener('click', (e) => {
+      e.stopPropagation();
+      sliderOverlay.classList.remove('open');
+    });
+
+    // ── Повзунки: оновлення output ──────────────────────────
+    const sliders = [
+      { sl: 'slContrast',   out: 'outContrast',  fmt: v => parseFloat(v).toFixed(1) },
+      { sl: 'slBrightness', out: 'outBrightness', fmt: v => v },
+      { sl: 'slLight',      out: 'outLight',      fmt: v => v },
+      { sl: 'slShadow',     out: 'outShadow',     fmt: v => (v/100).toFixed(2) },
+    ];
+    sliders.forEach(({ sl, out, fmt }) => {
+      const input = document.getElementById(sl);
+      const output = document.getElementById(out);
+      input.addEventListener('input', () => { output.value = fmt(input.value); });
+    });
+
+    // ── Кнопки калібрування: capture виконує main.js ────────
+    // window.__calibCapture(state, btn) повертає Promise; на успіх кнопка
+    // отримує .done, а «Грати» розблоковується. Всі 5 позицій — на сервері.
+    document.querySelectorAll('.calib-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (typeof window.__calibCapture === 'function') {
+          await window.__calibCapture(btn.dataset.state, btn);
+        }
+      });
+    });
+    // Спочатку «Грати» заблокована
+    document.getElementById('btnCalibPlay').disabled = true;
+
+    // ── Розмір gameCanvas під екран ─────────────────────────
+    // screenGame прихований до моменту входу, тому clientWidth може бути 0 —
+    // тоді беремо розмір вікна (екран позиціонований inset:0 = весь екран).
+    function resizeGame() {
+      const canvas = document.getElementById('gameCanvas');
+      const screen = document.getElementById('screenGame');
+      const w = screen.clientWidth || window.innerWidth;
+      const h = screen.clientHeight || window.innerHeight;
+      canvas.width  = w;
+      canvas.height = h;
+      canvas.style.width  = w + 'px';
+      canvas.style.height = h + 'px';
+    }
+    window.addEventListener('resize', resizeGame);
+    resizeGame();
+  </script>
+
+  <!-- Підключення основного модуля -->
   <script type="module" src="src/main.js"></script>
+
 </body>
 </html>
