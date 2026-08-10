@@ -88,6 +88,7 @@
       justify-content: center;
       padding: 24px 20px;
       gap: 18px;
+      z-index: 30;
     }
     #sliderOverlay.open { display: flex; }
 
@@ -149,6 +150,25 @@
     }
     #cameraFooter .status-text.warn { color: #ffc800; }
     #cameraFooter .status-text.error { color: #ff5c5c; }
+
+    /* Підказка: клік по зображенню відкриває налаштування */
+    #cameraHint {
+      position: absolute;
+      left: 50%;
+      bottom: 100px;
+      transform: translateX(-50%);
+      max-width: 92%;
+      background: rgba(0,0,0,0.55);
+      backdrop-filter: blur(4px);
+      color: #c8c8d8;
+      font-size: 13px;
+      line-height: 1.4;
+      text-align: center;
+      padding: 6px 14px;
+      border-radius: 999px;
+      pointer-events: none;
+      z-index: 15;
+    }
 
     /* ════════════════════════════════
        ЕКРАН 2 — КАЛІБРУВАННЯ
@@ -368,6 +388,9 @@
       <button class="btn-secondary" id="btnGoCalib">🎯 Калібрування</button>
       <button class="btn-primary"   id="btnGoGame"  disabled>▶ Грати</button>
     </div>
+
+    <!-- Підказка: клік на зображенні відкриває налаштування -->
+    <div id="cameraHint">Торкніться зображення — налаштуйте освітлення і контраст</div>
 
   </div>
 
