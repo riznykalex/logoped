@@ -2,18 +2,13 @@
 // Template Matching та еталони живуть на сервері; тут лише HTTP-обмін.
 // Маска maskSize×maskSize (CONFIG) — POST /classify → {state, dist}.
 // Профіль: X-User-Id — ключ профілю (localStorage), еталони в calibration/<ключ>/.
+// Адреса сервера — ТІЛЬКИ з CONFIG.server.defaultUrl (config.js); локальний
+// localStorage більше не перебиває її, щоб старий URL не «зависав» у браузері.
 
 import { CONFIG } from './config.js';
 
 const DEFAULT_SERVER_URL = CONFIG.server.defaultUrl;
-
 let baseUrl = DEFAULT_SERVER_URL;
-try {
-  const saved = localStorage.getItem('tongue.serverUrl');
-  if (saved && saved.trim()) baseUrl = saved.trim().replace(/\/+$/, '');
-} catch (e) {
-  baseUrl = DEFAULT_SERVER_URL;
-}
 
 let profileName = '';
 let profileCustom = false;
@@ -84,18 +79,10 @@ export function getServerUrl() {
 }
 
 export function setServerUrl(url) {
+  // Тимчасова зміна лише на час сесії; після перезавантаження сторінки
+  // адреса знову береться з CONFIG.server.defaultUrl.
   const v = (url || '').trim().replace(/\/+$/, '');
-  try {
-    if (v) {
-      baseUrl = v;
-      localStorage.setItem('tongue.serverUrl', v);
-    } else {
-      baseUrl = DEFAULT_SERVER_URL;
-      localStorage.removeItem('tongue.serverUrl');
-    }
-  } catch (e) {
-    baseUrl = v || DEFAULT_SERVER_URL;
-  }
+  baseUrl = v || DEFAULT_SERVER_URL;
 }
 
 async function withTimeout(promise, ms) {
