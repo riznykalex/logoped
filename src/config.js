@@ -4,7 +4,7 @@
 export const CONFIG = {
   // Сервер класифікації (Template Matching на домашньому сервері)
   server: {
-    defaultUrl: 'https://subscriber-fat-examples-lit.trycloudflare.com',
+    defaultUrl: 'https://tongue.6306617.xyz',
     classifyTimeoutMs: 3000,
     calibrateTimeoutMs: 5000,
     templatesTimeoutMs: 3000,
