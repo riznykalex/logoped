@@ -20,7 +20,9 @@ export class SnakeGame {
     this.ctx = canvas.getContext('2d');
     this.cols = (settings && settings.cols) || 10;
     this.rows = (settings && settings.rows) || 11;
-    this.stepMs = (settings && settings.stepMs) || 450;
+    this.baseStepMs = (settings && settings.stepMs) || 900;
+    this.speedupPerFruit = (settings && settings.speedupPerFruit) || 30;
+    this.minStepMs = (settings && settings.minStepMs) || 300;
     this._layout();
     this.reset();
   }
@@ -51,6 +53,7 @@ export class SnakeGame {
     this.state = 'NEUTRAL';
     this.accum = 0;
     this.score = 0;
+    this.stepMs = this.baseStepMs;
     this.fruit = null;
     this._spawnFruit();
   }
@@ -95,6 +98,7 @@ export class SnakeGame {
     this.snake.unshift({ x: nx, y: ny });
     if (this.fruit && nx === this.fruit.x && ny === this.fruit.y) {
       this.score += 1;
+      this.stepMs = Math.max(this.minStepMs, this.stepMs - this.speedupPerFruit);
       this._spawnFruit();
     } else {
       this.snake.pop();
