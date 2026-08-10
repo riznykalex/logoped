@@ -34,7 +34,13 @@ const hold = new HoldFilter(CONFIG.hold.ms);
 const cal = new CalibrationUI();
 cal.onMessage = (msg) => setStatus(msg, 'info');
 const game = new SnakeGame(
-  { stepMs: CONFIG.snake.stepMs, cols: CONFIG.snake.cols, rows: CONFIG.snake.rows },
+  {
+    stepMs: CONFIG.snake.stepMs,
+    speedupPerFruit: CONFIG.snake.speedupPerFruit,
+    minStepMs: CONFIG.snake.minStepMs,
+    cols: CONFIG.snake.cols,
+    rows: CONFIG.snake.rows,
+  },
   els.gameCanvas,
 );
 
