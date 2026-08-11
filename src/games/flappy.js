@@ -212,11 +212,17 @@ export class FlappyGame {
     }
     if (this.coinFlash > 0) this.coinFlash = Math.max(0, this.coinFlash - dt * 3);
 
-    // Зіткнення з трубою → відскок назад, без смерті
+    // Зіткнення з трубою → відскок назад, без смерті.
+    // Світ відкочується майже до попередньої труби: пташка повертається
+    // на позицію одразу після неї і пробує пройти трубу ще раз.
     for (const p of this.pipes) {
       if (this._hitPipe(p)) {
-        // Відкотитися до попередньої труби: труба знову повністю перед пташкою
-        this.bounceTarget = this.bx + this.r + this.bounceMargin - p.x;
+        // відстань між трубами мінус ширина труби та радіус пташки —
+        // тоді попередня труба опиняється одразу позаду пташки
+        this.bounceTarget = Math.max(
+          this.spacing - this.pipeWidth - this.r - this.bounceMargin,
+          this.r * 2 + this.bounceMargin,
+        );
         this.bounceLeft = this.bounceTarget;
         this.hitFlash = 1;
         return;
@@ -359,7 +365,23 @@ export class FlappyGame {
     c.textBaseline = 'top';
     c.fillStyle = '#fff';
     c.font = 'bold 20px system-ui, sans-serif';
-    c.fillText('Score: ' + this.score + '   🪙 ' + this.coins, 10, 8);
+    c.fillText('Score: ' + this.score, 10, 8);
+    // Монетка (емодзі 🪙 не скрізь підтримується — малюємо коло)
+    const scoreW = c.measureText('Score: ' + this.score).width;
+    const coinX = 10 + scoreW + 18;
+    c.fillStyle = '#ffd700';
+    c.strokeStyle = '#b8860b';
+    c.lineWidth = 2;
+    c.beginPath();
+    c.arc(coinX, 8 + 11, 10, 0, Math.PI * 2);
+    c.fill();
+    c.stroke();
+    c.fillStyle = '#fff3a0';
+    c.beginPath();
+    c.arc(coinX - 3, 8 + 8, 4, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = '#fff';
+    c.fillText(String(this.coins), coinX + 15, 8);
 
     // Швидкість: шкала + підсвічення напрямку (LEFT гальмо / RIGHT газ)
     const meterW = 110;
