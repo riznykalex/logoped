@@ -153,7 +153,7 @@ export class SnakeGame {
     c.font = 'bold 20px system-ui, sans-serif';
     c.textAlign = 'left';
     c.textBaseline = 'top';
-    c.fillText('Score: ' + this.score, 10, 8);
+    c.fillText('Score: ' + this.score + ' / ' + this.winScore, 10, 8);
   }
 
   _emoji(x, y, size, emoji) {
