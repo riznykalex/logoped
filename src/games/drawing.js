@@ -1,8 +1,7 @@
-// games/drawing.js — «Малювання по сітці» у стилі etch-a-sketch.
-// Кожен рух язика — один крок курсора вгору/вниз/вліво/вправо по сітці.
-// Пройдений квадрат фарбується: колір градієнтно змінюється з кожним кроком
-// (hue = hueStep° × кількість кроків). Зразка з цифрами немає: дитина вільно
-// малює. Тап по полю — очистити малюнок.
+// games/drawing.js — «Малювання по площині» (etch-a-sketch-стиль, без сітки).
+// Напрямок задає рух: утримання UP/DOWN/LEFT/RIGHT повільно рухає невеликий
+// квадрат-штамп по площині. Штамп залишає слід, колір якого градієнтно
+// змінюється за пройденим шляхом (huePerPx °/px). Тап по полю — очистити.
 
 import { CONFIG } from '../config.js';
 
@@ -17,86 +16,77 @@ export class DrawingGame {
   constructor(settings, canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
-    this.cols = (settings && settings.cols) || CONFIG.drawing.cols; // вузлів у ряді
-    this.hueStep = (settings && settings.hueStep) || CONFIG.drawing.hueStep; // °/крок
+    this.speed = (settings && settings.speed) || CONFIG.drawing.speed; // px/с
+    this.thickness = (settings && settings.thickness) || CONFIG.drawing.thickness; // px
+    this.huePerPx = (settings && settings.huePerPx) || CONFIG.drawing.huePerPx; // °/px
+    this.half = this.thickness / 2;
     this.w = this.canvas.width;
     this.h = this.canvas.height;
-    this._buildGrid();
-    this.cursorR = Math.max(4, Math.min(10, this.cell * 0.7)); // радіус курсора під розмір клітинки
     this.reset();
     // Тап по полю — очистити малюнок
     if (canvas.addEventListener) canvas.addEventListener('pointerdown', () => {
-      if (this.cells.size) this.clear();
+      if (this.trail.length) this.clear();
     });
-  }
-
-  _buildGrid() {
-    const cell = this.w / this.cols;
-    this.cell = cell;
-    this.rows = Math.max(3, Math.round(this.h / cell));
-    this.cols = Math.min(this.cols, this.w); // захист від нуля
   }
 
   resize() {
     this.w = this.canvas.width;
     this.h = this.canvas.height;
-    const gx = Math.max(0, Math.min(this.cols - 1, this.gx));
-    const gy = Math.max(0, Math.min(this.rows - 1, this.gy));
-    this._buildGrid();
-    this.gx = Math.min(this.cols - 1, gx);
-    this.gy = Math.min(this.rows - 1, gy);
-  }
-
-  /** Позиція вузла сітки (gx, gy) в екранних координатах. */
-  _nodePos(gx, gy) {
-    return { x: (gx + 0.5) * this.cell, y: (gy + 0.5) * this.cell };
+    this.x = Math.min(this.w, this.x);
+    this.y = Math.min(this.h, this.y);
   }
 
   reset() {
     this.state = 'NEUTRAL';
-    this.lastDir = null; // останній напрямок — для «крок за рух»
-    this.won = false;    // без перемоги — вільне малювання
-    this.gx = Math.floor((this.cols - 1) / 2);
-    this.gy = Math.floor((this.rows - 1) / 2);
-    this.trail = [this._nodePos(this.gx, this.gy)];
-    this.steps = 0;
-    this.flash = 0; // анімація кроку
-    this.cells = new Map(); // gx+gy*cols → hue фарбованого квадрата
-    this.hue = 0;           // поточний колір градієнта
+    this.won = false; // без перемоги — вільне малювання
+    this.x = this.w / 2;
+    this.y = this.h / 2;
+    this.trail = []; // {x, y, hue} — штампи сліду
+    this.dist = 0;   // пройдений шлях, px
+    this.hue = 0;
+    this._stamp();
   }
 
-  /** Очистити малюнок (курсор залишається на місці). */
+  /** Очистити малюнок (квадрат залишається на місці). */
   clear() {
-    this.trail = [this._nodePos(this.gx, this.gy)];
-    this.steps = 0;
-    this.flash = 1;
-    this.cells.clear();
+    this.trail = [];
+    this.dist = 0;
     this.hue = 0;
+    this._stamp();
   }
 
   onState(state) {
     this.state = state;
-    // Один рух язика = один крок (не «затриманий» повтор)
-    if (DIRS[state] && state !== this.lastDir) {
-      this._step(DIRS[state]);
-    }
-    this.lastDir = state;
   }
 
-  _step(d) {
-    this.gx = Math.max(0, Math.min(this.cols - 1, this.gx + d.dx));
-    this.gy = Math.max(0, Math.min(this.rows - 1, this.gy + d.dy));
-    // Etch-a-sketch: фарбуємо квадрат поточним кольором градієнта
-    this.cells.set(this.gy * this.cols + this.gx, this.hue);
-    this.hue = (this.hue + this.hueStep) % 360;
-    this.trail.push(this._nodePos(this.gx, this.gy));
-    if (this.trail.length > 4000) this.trail.splice(0, this.trail.length - 4000);
-    this.steps += 1;
-    this.flash = 1;
-  }
-
+  /** Рух: напрямок задає швидкість; штамп ставиться кожні ~half px шляху. */
   tick(dt) {
-    if (this.flash > 0) this.flash = Math.max(0, this.flash - dt * 4);
+    const d = DIRS[this.state];
+    if (!d || !dt || dt <= 0) return;
+    const step = this.speed * dt;
+    if (step <= 0) return;
+    const stampEvery = Math.max(1, Math.round(this.half));
+    let remaining = step;
+    while (remaining > 0) {
+      const s = Math.min(remaining, stampEvery);
+      const nx = this.x + d.dx * s;
+      const ny = this.y + d.dy * s;
+      const cx = Math.max(0, Math.min(this.w, nx));
+      const cy = Math.max(0, Math.min(this.h, ny));
+      if (cx === this.x && cy === this.y) break; // уперлися в край
+      const moved = Math.abs(cx - this.x) + Math.abs(cy - this.y);
+      this.x = cx;
+      this.y = cy;
+      remaining -= s;
+      this.dist += moved;
+      this.hue = (this.hue + moved * this.huePerPx) % 360;
+      this._stamp();
+    }
+  }
+
+  _stamp() {
+    this.trail.push({ x: this.x, y: this.y, hue: this.hue });
+    if (this.trail.length > 20000) this.trail.splice(0, this.trail.length - 20000);
   }
 
   draw() {
@@ -104,77 +94,30 @@ export class DrawingGame {
     const w = this.w;
     const h = this.h;
 
-    c.fillStyle = '#101018';
+    c.fillStyle = '#0e0e16';
     c.fillRect(0, 0, w, h);
 
-    // Фарбовані квадрати (etch-a-sketch) у кольорах градієнта
-    for (const [key, hue] of this.cells) {
-      const gx = key % this.cols;
-      const gy = Math.floor(key / this.cols);
-      c.fillStyle = `hsl(${hue}, 85%, 62%)`;
-      c.fillRect(gx * this.cell, gy * this.cell, this.cell + 1, this.cell + 1);
+    // Слід: квадрати-штампи у кольорах градієнта
+    for (const t of this.trail) {
+      c.fillStyle = `hsl(${t.hue}, 85%, 60%)`;
+      c.fillRect(t.x - this.half, t.y - this.half, this.thickness, this.thickness);
     }
 
-    // Лінії сітки
-    c.strokeStyle = 'rgba(255,255,255,0.08)';
-    c.lineWidth = 1;
-    c.beginPath();
-    for (let gx = 0; gx < this.cols; gx++) {
-      const x = (gx + 0.5) * this.cell;
-      c.moveTo(x, 0);
-      c.lineTo(x, h);
-    }
-    for (let gy = 0; gy < this.rows; gy++) {
-      const y = (gy + 0.5) * this.cell;
-      c.moveTo(0, y);
-      c.lineTo(w, y);
-    }
-    c.stroke();
-
-    // Вузли сітки (крапки-орієнтири; при дрібній сітці — кожен 4-й вузол)
-    const dotR = Math.max(0.8, Math.min(2.5, this.cell * 0.15));
-    const dotStep = this.cell >= 12 ? 1 : 4;
-    c.fillStyle = 'rgba(255,255,255,0.22)';
-    for (let gx = 0; gx < this.cols; gx += dotStep) {
-      for (let gy = 0; gy < this.rows; gy += dotStep) {
-        const p = this._nodePos(gx, gy);
-        c.beginPath();
-        c.arc(p.x, p.y, dotR, 0, Math.PI * 2);
-        c.fill();
-      }
-    }
-
-    // Слід пера (напівпрозора лінія між вузлами)
-    c.strokeStyle = 'rgba(255,255,255,0.55)';
-    c.lineWidth = Math.max(1.5, Math.min(3, this.cell * 0.3));
-    c.lineCap = 'round';
-    c.lineJoin = 'round';
-    c.beginPath();
-    this.trail.forEach((p, i) => {
-      if (i === 0) c.moveTo(p.x, p.y);
-      else c.lineTo(p.x, p.y);
-    });
-    c.stroke();
-
-    // Курсор
-    const pos = this._nodePos(this.gx, this.gy);
-    const r = this.cursorR * (1 + this.flash * 0.2);
-    c.beginPath();
-    c.arc(pos.x, pos.y, r, 0, Math.PI * 2);
-    c.fillStyle = this.state === 'OPENED' ? '#ffc800' : '#ffffff';
-    c.fill();
-    c.lineWidth = 3;
-    c.strokeStyle = '#000';
-    c.stroke();
+    // Поточний квадрат (з рамкою)
+    c.fillStyle = `hsl(${this.hue}, 85%, 60%)`;
+    c.fillRect(this.x - this.half, this.y - this.half, this.thickness, this.thickness);
+    c.lineWidth = 2;
+    c.strokeStyle = 'rgba(255,255,255,0.9)';
+    c.strokeRect(this.x - this.half, this.y - this.half, this.thickness, this.thickness);
 
     // Підказка
     c.textAlign = 'left';
     c.textBaseline = 'top';
     c.fillStyle = 'rgba(255,255,255,0.85)';
     c.font = 'bold 16px system-ui, sans-serif';
-    c.fillText('Кроки язиком: ' + this.steps, 10, 8);
+    c.fillText('Пройдено: ' + Math.round(this.dist) + ' px', 10, 8);
     c.font = '13px system-ui, sans-serif';
     c.fillStyle = 'rgba(255,255,255,0.5)';
-    c.fillText('вгору · вниз · вліво · вправо   —   тап по полю = очистити', 10, 32);
+    c.fillText('язик: вгору · вниз · вліво · вправо   —   тап по полю = очистити', 10, 32);
   }
 }
