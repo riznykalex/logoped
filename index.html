@@ -92,6 +92,15 @@
     }
     #sliderOverlay.open { display: flex; }
 
+    /* Підказка на екрані налаштувань (повзунки) */
+    #sliderHint {
+      text-align: center;
+      font-size: 14px;
+      color: #8fd08f;
+      line-height: 1.45;
+      padding: 0 8px;
+    }
+
     #sliderOverlay .close-btn {
       position: absolute;
       top: 14px; right: 14px;
@@ -318,6 +327,37 @@
       z-index: 10;
     }
 
+    /* Оверлей перемоги — під кнопкою ⚙️, щоб вихід лишався доступним */
+    #winOverlay {
+      position: absolute; inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.72);
+      backdrop-filter: blur(3px);
+      z-index: 5;
+    }
+    #winOverlay.show { display: flex; }
+    .win-card {
+      text-align: center;
+      padding: 28px 32px;
+      border-radius: 20px;
+      background: #1a1a2a;
+      border: 1px solid #3a3a52;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+      max-width: 300px;
+      width: 90%;
+    }
+    .win-emoji { font-size: 56px; }
+    .win-title {
+      font-size: 26px;
+      font-weight: 800;
+      color: #ffc800;
+      margin: 10px 0 4px;
+    }
+    .win-sub { font-size: 14px; color: #a8a8c0; margin-bottom: 18px; }
+    .win-card .btn-primary, .win-card .btn-secondary { width: 100%; margin-top: 10px; }
+
     /* ════════════════════════════════
        Спільні кнопки
     ════════════════════════════════ */
@@ -382,6 +422,7 @@
     <!-- Overlay повзунків (клік на камеру) -->
     <div id="sliderOverlay">
       <button class="close-btn" id="btnCloseSliders">✕</button>
+      <div id="sliderHint">Орієнтуйтесь на чорно-біле зображення, щоб отримати найбільш контрастний зразок.</div>
       <div class="slider-row">
         <label for="slContrast">☀️ Контраст</label>
         <input type="range" id="slContrast" min="1" max="3" value="1.0" step="0.1" />
@@ -467,6 +508,16 @@
   <div id="screenGame" class="screen">
     <canvas id="gameCanvas" width="400" height="440"></canvas>
     <button id="btnBackToCamera">⚙️</button>
+
+    <div id="winOverlay">
+      <div class="win-card">
+        <div class="win-emoji">🏆</div>
+        <div class="win-title">Перемога!</div>
+        <div class="win-sub" id="winSub"></div>
+        <button class="btn-primary" id="btnPlayAgain">▶ Грати ще раз</button>
+        <button class="btn-secondary" id="btnWinExit">Вихід</button>
+      </div>
+    </div>
   </div>
 
   <video id="video" autoplay playsinline muted></video>
@@ -545,7 +596,7 @@
 
   <!-- Підключення основного модуля. v=2: cache-busting — після кожної зміни JS
        оновлюйте номер, щоб браузер і Cloudflare-кеш не віддавали стару версію. -->
-  <script type="module" src="src/main.js?v=2"></script>
+  <script type="module" src="src/main.js?v=3"></script>
 
 </body>
 </html>
