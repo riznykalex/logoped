@@ -1,18 +1,48 @@
 // games/flappy.js — «Flappy Bird» (полегшений):
 // пташка ширяє приблизно по центру поля (spring тримає її біля centerY),
-// допуск tolerance задає смугу, в якій вона може підніматись/опускатись.
+// смуга допуску tolerance задає зону, в якій вона може підніматись/опускатись.
 // Керування:
 //   UP    — летіти вгору
 //   DOWN  — летіти вниз
 //   LEFT  — гальмувати (швидкість труб падає майже до зупинки)
 //   RIGHT — прискорювати (рух уперед)
-// Труби рідкі (spacing), прохід варіюється по всій смузі — зверху і знизу.
-// Пташка завжди орієнтована горизонтально (без повороту).
+// Перешкоди: пара труб, труба зверху або труба знизу; можуть трохи
+// заходити в безпечну зону. У повітрі літають монетки — пташка їх збирає.
+// Пташка завжди орієнтована горизонтально (спрайт дзеркальний, дивиться вправо).
 // Зіткнення з трубою → коротка пауза (deathPause) і плавний рестарт.
-// Земля/стеля не вбивають — позиція обмежена допуском. Перемоги немає.
+// Спрайти з https://github.com/hkirat/flappyBird (assets/flappy/).
+
+const SPR = { bg: null, ground: null, upper: null, lower: null, bird: null };
+let spritesInit = false;
+
+function loadSprites() {
+  if (spritesInit || typeof Image === 'undefined') return;
+  spritesInit = true;
+  SPR.bg = new Image();
+  SPR.bg.src = 'assets/flappy/background.png';
+  SPR.ground = new Image();
+  SPR.ground.src = 'assets/flappy/ground.png';
+  SPR.upper = new Image();
+  SPR.upper.src = 'assets/flappy/upper.png';
+  SPR.lower = new Image();
+  SPR.lower.src = 'assets/flappy/lower.png';
+  SPR.bird = new Image();
+  SPR.bird.src = 'assets/flappy/flappy_atlas.png';
+}
+
+function imgReady(img) {
+  return !!img && img.complete && img.naturalWidth > 0;
+}
+
+const ATLAS_W = 51;   // 3 кадри по 17px
+const FRAME_W = 17;
+const FRAME_H = 12;
+const CAP_SRC = 26;   // «капелюшок» труби, px джерела
+const BIRD_ATLAS_H = 12;
 
 export class FlappyGame {
   constructor(settings, canvas) {
+    loadSprites();
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.startSpeed = (settings && settings.startSpeed) || 55; // повільний старт, px/с
@@ -29,6 +59,7 @@ export class FlappyGame {
     this.spacing = (settings && settings.spacing) || 460;       // труби рідше майже вдвічі
     this.pipeWidth = (settings && settings.pipeWidth) || 60;
     this.deathPause = (settings && settings.deathPause) || 0.8; // пауза перед рестартом
+    this.coinR = (settings && settings.coinR) || 9;             // монетка невелика
     this.w = this.canvas.width;
     this.h = this.canvas.height;
     this.reset();
@@ -52,20 +83,65 @@ export class FlappyGame {
     this.vy = 0;
     this.r = Math.max(12, Math.min(this.w, this.h) * 0.03);
     this.speed = this.startSpeed; // гра починається повільно
-    this.score = 0;
+    this.score = 0;              // пройдені труби
+    this.coins = 0;              // зібрані монетки
     this.pipes = [];
+    this.coinItems = [];
+    this.coinFlash = 0;          // анімація при зборі монетки
+    this.groundX = 0;
+    this.animT = 0;              // час для анімації крил
     this.hitFlash = 0;
     this.deathT = 0;             // лічильник паузи перед рестартом
-    this._spawnPipe(this.w + 80);
+    this._spawnObstacle(this.w + 80);
   }
 
-  _spawnPipe(x) {
-    // Прохід випадковий у межах смуги допуску — зверху і знизу від центру
-    const offset = (Math.random() * 2 - 1) * this.tolerance;
-    const gapCenter = this.centerY + offset;
+  _clampTop(top) {
     const margin = 30;
-    const top = Math.max(margin, Math.min(this.h - this.groundH - this.gap - margin, gapCenter - this.gap / 2));
-    this.pipes.push({ x, top, scored: false });
+    return Math.max(margin, Math.min(this.h - this.groundH - this.gap - margin, top));
+  }
+
+  _spawnObstacle(x) {
+    const r = Math.random();
+    if (r < 0.4) {
+      // Пара труб: прохід випадковий у межах смуги
+      const offset = (Math.random() * 2 - 1) * this.tolerance;
+      const gapCenter = this.centerY + offset;
+      const top = this._clampTop(gapCenter - this.gap / 2);
+      this.pipes.push({ type: 'pair', x, top, gap: this.gap, scored: false });
+      // монетка в проході
+      this._spawnCoin(x + this.pipeWidth / 2, gapCenter);
+    } else if (r < 0.7) {
+      // Труба зверху: нижній край трохи заходить у безпечну зону
+      const intrude = this.r * 1.1 + Math.random() * this.tolerance * 0.32;
+      const bottom = Math.min(
+        this.h - this.groundH - this.r - 20,
+        this.centerY + this.tolerance - this.r - intrude,
+      );
+      this.pipes.push({ type: 'top', x, bottom, scored: false });
+      // монетка під трубою (там, де пролітає пташка)
+      this._spawnCoin(x + this.pipeWidth / 2, Math.min(this.centerY + this.tolerance, bottom + 40));
+    } else {
+      // Труба знизу: верхній край трохи заходить у безпечну зону
+      const intrude = this.r * 1.1 + Math.random() * this.tolerance * 0.32;
+      const top = Math.max(
+        this.r + 20,
+        this.centerY - this.tolerance + this.r + intrude,
+      );
+      this.pipes.push({ type: 'bottom', x, top, scored: false });
+      // монетка над трубою
+      this._spawnCoin(x + this.pipeWidth / 2, Math.max(this.centerY - this.tolerance, top - 40));
+    }
+    // Іноді ще одна монетка у вільному повітрі між трубами
+    if (Math.random() < 0.4) {
+      this._spawnCoin(
+        x + this.pipeWidth / 2 + this.spacing * (0.3 + Math.random() * 0.4),
+        this.centerY + (Math.random() * 2 - 1) * (this.tolerance - this.coinR),
+      );
+    }
+  }
+
+  _spawnCoin(x, y) {
+    this.coinItems.push({ x, y, r: this.coinR, got: false, phase: Math.random() * Math.PI * 2 });
   }
 
   onState(state) {
@@ -104,11 +180,16 @@ export class FlappyGame {
     // Смуга допуску навколо центру
     this.by = Math.max(this.centerY - this.tolerance, Math.min(this.centerY + this.tolerance, this.by));
 
-    // --- Труби ---
+    this.animT += dt;
+    this.groundX = (this.groundX - this.speed * dt) % 308;
+
+    // --- Труби та монетки рухаються вліво ---
     for (const p of this.pipes) p.x -= this.speed * dt;
+    for (const c of this.coinItems) c.x -= this.speed * dt;
     const last = this.pipes[this.pipes.length - 1];
-    if (!last || last.x < this.w - this.spacing) this._spawnPipe(this.w + 20);
+    if (!last || last.x < this.w - this.spacing) this._spawnObstacle(this.w + 20);
     this.pipes = this.pipes.filter((p) => p.x + this.pipeWidth > -20);
+    this.coinItems = this.coinItems.filter((c) => c.x > -20);
 
     // Рахунок і природне пришвидшення за пройдену трубу
     for (const p of this.pipes) {
@@ -118,6 +199,17 @@ export class FlappyGame {
         this.speed = Math.min(this.maxSpeed, this.speed + this.rampPerPipe);
       }
     }
+
+    // Збір монеток
+    for (const c of this.coinItems) {
+      if (c.got) continue;
+      if (Math.hypot(this.bx - c.x, this.by - c.y) < c.r + this.r) {
+        c.got = true;
+        this.coins += 1;
+        this.coinFlash = 1;
+      }
+    }
+    if (this.coinFlash > 0) this.coinFlash = Math.max(0, this.coinFlash - dt * 3);
 
     // Зіткнення з трубою → коротка пауза, потім рестарт
     for (const p of this.pipes) {
@@ -133,6 +225,12 @@ export class FlappyGame {
 
   _hitPipe(p) {
     const groundY = this.h - this.groundH;
+    if (p.type === 'top') {
+      return this._circleRect({ x: p.x, y: 0, w: this.pipeWidth, h: p.bottom });
+    }
+    if (p.type === 'bottom') {
+      return this._circleRect({ x: p.x, y: p.top, w: this.pipeWidth, h: groundY - p.top });
+    }
     const upper = { x: p.x, y: 0, w: this.pipeWidth, h: p.top };
     const lower = { x: p.x, y: p.top + p.gap, w: this.pipeWidth, h: groundY - (p.top + p.gap) };
     return this._circleRect(upper) || this._circleRect(lower);
@@ -149,25 +247,60 @@ export class FlappyGame {
     const w = this.w;
     const h = this.h;
     const groundY = h - this.groundH;
+    const sprites = imgReady(SPR.bg);
+    c.imageSmoothingEnabled = false;
 
-    // Небо
-    const grad = c.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0, '#1c2a4a');
-    grad.addColorStop(1, '#3a5a8a');
-    c.fillStyle = grad;
-    c.fillRect(0, 0, w, h);
+    // Фон
+    if (sprites) {
+      c.drawImage(SPR.bg, 0, 0, 144, 256, 0, 0, w, h);
+    } else {
+      const grad = c.createLinearGradient(0, 0, 0, h);
+      grad.addColorStop(0, '#1c2a4a');
+      grad.addColorStop(1, '#3a5a8a');
+      c.fillStyle = grad;
+      c.fillRect(0, 0, w, h);
+    }
 
     // Труби
     for (const p of this.pipes) {
-      this._pipe(p.x, 0, p.top, true);
-      this._pipe(p.x, p.top + p.gap, groundY - (p.top + p.gap), false);
+      if (p.type === 'top') this._drawUpperPipe(p.x, p.bottom);
+      else if (p.type === 'bottom') this._drawLowerPipe(p.x, p.top, groundY);
+      else {
+        this._drawUpperPipe(p.x, p.top);
+        this._drawLowerPipe(p.x, p.top + p.gap, groundY);
+      }
     }
 
-    // Земля
-    c.fillStyle = '#2a3a1a';
-    c.fillRect(0, groundY, w, this.groundH);
-    c.fillStyle = '#4caf50';
-    c.fillRect(0, groundY, w, 4);
+    // Монетки
+    for (const cItem of this.coinItems) {
+      if (cItem.got) continue;
+      const pulse = 1 + 0.15 * Math.sin(this.animT * 4 + cItem.phase);
+      const cr = cItem.r * pulse;
+      c.fillStyle = '#ffd700';
+      c.strokeStyle = '#b8860b';
+      c.lineWidth = 2;
+      c.beginPath();
+      c.arc(cItem.x, cItem.y, cr, 0, Math.PI * 2);
+      c.fill();
+      c.stroke();
+      c.fillStyle = '#fff3a0';
+      c.beginPath();
+      c.arc(cItem.x - cr * 0.3, cItem.y - cr * 0.3, cr * 0.4, 0, Math.PI * 2);
+      c.fill();
+    }
+
+    // Земля (спрайт, рухається)
+    if (imgReady(SPR.ground)) {
+      c.drawImage(SPR.ground, 0, 0, 308, 56, this.groundX, groundY, 308, 56);
+      c.drawImage(SPR.ground, 0, 0, 308, 56, this.groundX + 308, groundY, 308, 56);
+      c.fillStyle = '#1c2a14';
+      c.fillRect(0, groundY + 56, w, this.groundH - 56);
+    } else {
+      c.fillStyle = '#2a3a1a';
+      c.fillRect(0, groundY, w, this.groundH);
+      c.fillStyle = '#4caf50';
+      c.fillRect(0, groundY, w, 4);
+    }
 
     // Смуга допуску та центр
     c.strokeStyle = 'rgba(255,255,255,0.12)';
@@ -181,11 +314,22 @@ export class FlappyGame {
     c.stroke();
     c.setLineDash([]);
 
-    // Пташка — завжди горизонтально, без повороту
-    c.font = `${Math.round(this.r * 2.4)}px system-ui, sans-serif`;
-    c.textAlign = 'center';
-    c.textBaseline = 'middle';
-    c.fillText('🐤', this.bx, this.by + this.r * 0.1);
+    // Пташка — спрайт, дзеркальний горизонтально (дивиться вправо)
+    if (imgReady(SPR.bird)) {
+      const frame = Math.floor(this.animT * 6) % 3; // 0,1,2,1... → просто цикл 3 кадрів
+      const bw = this.r * 2.8;
+      const bh = this.r * 2.0;
+      c.save();
+      c.translate(this.bx, this.by);
+      c.scale(-1, 1);
+      c.drawImage(SPR.bird, frame * FRAME_W, 0, FRAME_W, BIRD_ATLAS_H, -bw / 2, -bh / 2, bw, bh);
+      c.restore();
+    } else {
+      c.font = `${Math.round(this.r * 2.4)}px system-ui, sans-serif`;
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.fillText('🐤', this.bx, this.by + this.r * 0.1);
+    }
 
     // Спалах після зіткнення (м'який, затухає)
     if (this.hitFlash > 0) {
@@ -198,7 +342,7 @@ export class FlappyGame {
     c.textBaseline = 'top';
     c.fillStyle = '#fff';
     c.font = 'bold 20px system-ui, sans-serif';
-    c.fillText('Score: ' + this.score, 10, 8);
+    c.fillText('Score: ' + this.score + '   🪙 ' + this.coins, 10, 8);
 
     // Швидкість (зворотний зв'язок LEFT/RIGHT)
     c.font = '14px system-ui, sans-serif';
@@ -206,16 +350,33 @@ export class FlappyGame {
     c.fillText('◄◄ ' + Math.round(this.speed) + ' px/с ►►', 10, 34);
   }
 
-  _pipe(x, y, hh, isUpper) {
+  _drawUpperPipe(x, bottom) {
     const c = this.ctx;
-    c.fillStyle = '#3a8a3a';
-    c.fillRect(x, y, this.pipeWidth, hh);
-    c.fillStyle = '#5ab85a';
-    const cap = 22;
-    if (isUpper) c.fillRect(x - 4, y + hh - cap, this.pipeWidth + 8, cap);
-    else c.fillRect(x - 4, y, this.pipeWidth + 8, cap);
-    c.strokeStyle = '#2a5a2a';
-    c.lineWidth = 2;
-    c.strokeRect(x, y, this.pipeWidth, hh);
+    const capH = 26;
+    const bodyH = Math.max(1, bottom - capH);
+    if (imgReady(SPR.upper)) {
+      c.drawImage(SPR.upper, 0, 0, 26, 135 - CAP_SRC, x, 0, this.pipeWidth, bodyH);
+      c.drawImage(SPR.upper, 0, 135 - CAP_SRC, 26, CAP_SRC, x - 4, bodyH, this.pipeWidth + 8, capH);
+    } else {
+      c.fillStyle = '#3a8a3a';
+      c.fillRect(x, 0, this.pipeWidth, bottom);
+      c.fillStyle = '#5ab85a';
+      c.fillRect(x - 4, bodyH, this.pipeWidth + 8, capH);
+    }
+  }
+
+  _drawLowerPipe(x, top, groundY) {
+    const c = this.ctx;
+    const capH = 26;
+    const bodyH = Math.max(1, groundY - top - capH);
+    if (imgReady(SPR.lower)) {
+      c.drawImage(SPR.lower, 0, CAP_SRC, 26, 121 - CAP_SRC, x, top + capH, this.pipeWidth, bodyH);
+      c.drawImage(SPR.lower, 0, 0, 26, CAP_SRC, x - 4, top, this.pipeWidth + 8, capH);
+    } else {
+      c.fillStyle = '#3a8a3a';
+      c.fillRect(x, top, this.pipeWidth, groundY - top);
+      c.fillStyle = '#5ab85a';
+      c.fillRect(x - 4, top, this.pipeWidth + 8, capH);
+    }
   }
 }
