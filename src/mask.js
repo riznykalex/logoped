@@ -75,13 +75,15 @@ export function buildStateMask(imageData, landmarks, settings) {
   for (let i = 0; i < bin.length; i++) bin[i] = gray[i] >= th ? 255 : 0;
   const opened = morphologyOpen(bin, roiW, roiH);
 
-  // Обрізка по внутрішніх губах + паддінг
-  const ix = INNER_LIPS_INDICES.map((i) => lm(i).x - x1);
+  // Обрізка по внутрішніх губах + паддінг.
+  // По X межу беремо по КУТАХ рота (61/291) — темна зона інтер'єру не виходить
+  // за них, тож маска не "ріжеться" справа/зліва при letterbox на всю ширину.
+  const cornerX = [lm(CORNERS.left).x - x1, lm(CORNERS.right).x - x1];
   const iy = INNER_LIPS_INDICES.map((i) => lm(i).y - y1);
-  const padX = Math.max(4, Math.round(mouthW * 0.15));
+  const padX = Math.max(6, Math.round(mouthW * 0.15));
   const padY = Math.max(6, Math.round(mouthH * 0.5));
-  const lx1 = Math.max(0, Math.min(...ix) - padX);
-  const lx2 = Math.min(roiW, Math.max(...ix) + padX);
+  const lx1 = Math.max(0, Math.min(...cornerX) - padX);
+  const lx2 = Math.min(roiW, Math.max(...cornerX) + padX);
   const ly1 = Math.max(0, Math.min(...iy) - padY);
   const ly2 = Math.min(roiH, Math.max(...iy) + padY);
   const cropW = Math.max(1, lx2 - lx1);
