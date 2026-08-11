@@ -60,6 +60,7 @@ export class FlappyGame {
     this.pipeWidth = (settings && settings.pipeWidth) || 60;
     this.deathPause = (settings && settings.deathPause) || 0.8; // пауза перед рестартом
     this.coinR = (settings && settings.coinR) || 9;             // монетка невелика
+    this.warmupSec = (settings && settings.warmupSec) || 10;    // тренування без труб
     this.w = this.canvas.width;
     this.h = this.canvas.height;
     this.reset();
@@ -92,7 +93,7 @@ export class FlappyGame {
     this.animT = 0;              // час для анімації крил
     this.hitFlash = 0;
     this.deathT = 0;             // лічильник паузи перед рестартом
-    this._spawnObstacle(this.w + 80);
+    this.warmupLeft = this.warmupSec; // тренувальний цикл без труб
   }
 
   _clampTop(top) {
@@ -183,11 +184,17 @@ export class FlappyGame {
     this.animT += dt;
     this.groundX = ((this.groundX - this.speed * dt) % 308 + 308) % 308;
 
+    // Тренувальний цикл: перші секунди без труб, щоб освоїтися
+    if (this.warmupLeft > 0) {
+      this.warmupLeft -= dt;
+      if (this.warmupLeft < 0) this.warmupLeft = 0;
+    }
+
     // --- Труби та монетки рухаються вліво ---
     for (const p of this.pipes) p.x -= this.speed * dt;
     for (const c of this.coinItems) c.x -= this.speed * dt;
     const last = this.pipes[this.pipes.length - 1];
-    if (!last || last.x < this.w - this.spacing) this._spawnObstacle(this.w + 20);
+    if (this.warmupLeft <= 0 && (!last || last.x < this.w - this.spacing)) this._spawnObstacle(this.w + 20);
     this.pipes = this.pipes.filter((p) => p.x + this.pipeWidth > -20);
     this.coinItems = this.coinItems.filter((c) => c.x > -20);
 
@@ -341,10 +348,45 @@ export class FlappyGame {
     c.font = 'bold 20px system-ui, sans-serif';
     c.fillText('Score: ' + this.score + '   🪙 ' + this.coins, 10, 8);
 
-    // Швидкість (зворотний зв'язок LEFT/RIGHT)
-    c.font = '14px system-ui, sans-serif';
+    // Швидкість: шкала + підсвічення напрямку (LEFT гальмо / RIGHT газ)
+    const meterW = 110;
+    const meterH = 10;
+    const mx = w - meterW - 10;
+    const my = 10;
+    const frac = Math.max(0, Math.min(1, (this.speed - this.minSpeed) / (this.maxSpeed - this.minSpeed)));
+    c.fillStyle = 'rgba(255,255,255,0.2)';
+    c.fillRect(mx, my, meterW, meterH);
     c.fillStyle = '#ffc800';
-    c.fillText('◄◄ ' + Math.round(this.speed) + ' px/с ►►', 10, 34);
+    c.fillRect(mx, my, meterW * frac, meterH);
+    c.font = '12px system-ui, sans-serif';
+    c.textAlign = 'right';
+    c.fillStyle = this.state === 'LEFT' ? '#4caf50' : '#ffffff';
+    c.fillText('◄◄ гальмо', mx - 6, my - 1);
+    c.textAlign = 'left';
+    c.fillStyle = this.state === 'RIGHT' ? '#4caf50' : '#ffffff';
+    c.fillText('газ ►►', mx + meterW + 6, my - 1);
+    c.textAlign = 'right';
+    c.fillStyle = '#aaa';
+    c.font = '11px system-ui, sans-serif';
+    c.fillText(Math.round(this.speed) + ' px/с', mx + meterW, my + meterH + 4);
+
+    // Тренувальний екран: без труб, підказки + видно розпізнаний паттерн
+    if (this.warmupLeft > 0) {
+      c.fillStyle = 'rgba(0,0,0,0.5)';
+      c.fillRect(0, h * 0.20, w, 152);
+      c.textAlign = 'center';
+      c.textBaseline = 'top';
+      c.fillStyle = '#fff';
+      c.font = 'bold 24px system-ui, sans-serif';
+      c.fillText('Тренування — труб поки немає', w / 2, h * 0.20 + 14);
+      c.font = '16px system-ui, sans-serif';
+      c.fillStyle = '#ffd700';
+      c.fillText('Паттерн: ' + this.state, w / 2, h * 0.20 + 50);
+      c.fillStyle = '#c8ffc8';
+      c.fillText('↑ вгору · ↓ вниз — висота', w / 2, h * 0.20 + 78);
+      c.fillStyle = '#ffc800';
+      c.fillText('◄ вліво — гальмо · вправо ► — прискорення', w / 2, h * 0.20 + 104);
+    }
   }
 
   _drawUpperPipe(x, bottom) {
