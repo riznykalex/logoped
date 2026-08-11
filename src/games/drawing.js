@@ -1,7 +1,10 @@
-// games/drawing.js — «Малювання по сітці».
+// games/drawing.js — «Малювання по сітці» у стилі etch-a-sketch.
 // Кожен рух язика — один крок курсора вгору/вниз/вліво/вправо по сітці.
-// Зразка з цифрами немає: дитина вільно малює лінію між вузлами.
-// Тап по полю — очистити малюнок.
+// Пройдений квадрат фарбується: колір градієнтно змінюється з кожним кроком
+// (hue = hueStep° × кількість кроків). Зразка з цифрами немає: дитина вільно
+// малює. Тап по полю — очистити малюнок.
+
+import { CONFIG } from '../config.js';
 
 const DIRS = {
   UP: { dx: 0, dy: -1 },
@@ -14,7 +17,8 @@ export class DrawingGame {
   constructor(settings, canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
-    this.cols = (settings && settings.cols) || 70; // вузлів у ряді
+    this.cols = (settings && settings.cols) || CONFIG.drawing.cols; // вузлів у ряді
+    this.hueStep = (settings && settings.hueStep) || CONFIG.drawing.hueStep; // °/крок
     this.w = this.canvas.width;
     this.h = this.canvas.height;
     this._buildGrid();
@@ -22,7 +26,7 @@ export class DrawingGame {
     this.reset();
     // Тап по полю — очистити малюнок
     if (canvas.addEventListener) canvas.addEventListener('pointerdown', () => {
-      if (this.trail) this.clear();
+      if (this.cells.size) this.clear();
     });
   }
 
@@ -57,6 +61,8 @@ export class DrawingGame {
     this.trail = [this._nodePos(this.gx, this.gy)];
     this.steps = 0;
     this.flash = 0; // анімація кроку
+    this.cells = new Map(); // gx+gy*cols → hue фарбованого квадрата
+    this.hue = 0;           // поточний колір градієнта
   }
 
   /** Очистити малюнок (курсор залишається на місці). */
@@ -64,6 +70,8 @@ export class DrawingGame {
     this.trail = [this._nodePos(this.gx, this.gy)];
     this.steps = 0;
     this.flash = 1;
+    this.cells.clear();
+    this.hue = 0;
   }
 
   onState(state) {
@@ -78,6 +86,9 @@ export class DrawingGame {
   _step(d) {
     this.gx = Math.max(0, Math.min(this.cols - 1, this.gx + d.dx));
     this.gy = Math.max(0, Math.min(this.rows - 1, this.gy + d.dy));
+    // Etch-a-sketch: фарбуємо квадрат поточним кольором градієнта
+    this.cells.set(this.gy * this.cols + this.gx, this.hue);
+    this.hue = (this.hue + this.hueStep) % 360;
     this.trail.push(this._nodePos(this.gx, this.gy));
     if (this.trail.length > 4000) this.trail.splice(0, this.trail.length - 4000);
     this.steps += 1;
@@ -95,6 +106,14 @@ export class DrawingGame {
 
     c.fillStyle = '#101018';
     c.fillRect(0, 0, w, h);
+
+    // Фарбовані квадрати (etch-a-sketch) у кольорах градієнта
+    for (const [key, hue] of this.cells) {
+      const gx = key % this.cols;
+      const gy = Math.floor(key / this.cols);
+      c.fillStyle = `hsl(${hue}, 85%, 62%)`;
+      c.fillRect(gx * this.cell, gy * this.cell, this.cell + 1, this.cell + 1);
+    }
 
     // Лінії сітки
     c.strokeStyle = 'rgba(255,255,255,0.08)';
@@ -125,9 +144,9 @@ export class DrawingGame {
       }
     }
 
-    // Слід пера (лінія між вузлами)
-    c.strokeStyle = '#4caf50';
-    c.lineWidth = Math.max(2, Math.min(5, this.cell * 0.5));
+    // Слід пера (напівпрозора лінія між вузлами)
+    c.strokeStyle = 'rgba(255,255,255,0.55)';
+    c.lineWidth = Math.max(1.5, Math.min(3, this.cell * 0.3));
     c.lineCap = 'round';
     c.lineJoin = 'round';
     c.beginPath();
