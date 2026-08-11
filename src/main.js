@@ -160,24 +160,25 @@ function resolveState(res, cx) {
   if (res.dist > CONFIG.classify.rejectDist) return 'NEUTRAL';
 
   // 2. Другий кандидат майже такий самий — неоднозначно
+  const margin = CONFIG.classify.marginDist;
+  let secondName = null;
   let second = Infinity;
   for (const name of Object.keys(dists)) {
     if (name === state) continue;
-    if (dists[name] < second) second = dists[name];
+    if (dists[name] < second) {
+      second = dists[name];
+      secondName = name;
+    }
   }
-  if (Number.isFinite(second) && second - res.dist < CONFIG.classify.marginDist) {
+  const tie = Number.isFinite(second) && second - res.dist < margin;
+  if (tie) {
+    // 3. Пара LEFT/RIGHT майже однакова — розв'язуємо геометрією маски (cx):
+    //    пляма темряви зліва/справа, не падаємо в NEUTRAL
+    if (cx >= 0) {
+      if (state === 'LEFT' && secondName === 'RIGHT') return cx >= 32 ? 'RIGHT' : 'LEFT';
+      if (state === 'RIGHT' && secondName === 'LEFT') return cx < 32 ? 'LEFT' : 'RIGHT';
+    }
     return 'NEUTRAL';
-  }
-
-  // 3. LEFT/RIGHT майже однакові — розв'язуємо геометрією маски
-  const margin = CONFIG.classify.marginDist;
-  if (cx >= 0) {
-    if (state === 'LEFT' && typeof dists.RIGHT === 'number' && dists.RIGHT - res.dist < margin && cx >= 32) {
-      return 'RIGHT';
-    }
-    if (state === 'RIGHT' && typeof dists.LEFT === 'number' && dists.LEFT - res.dist < margin && cx < 32) {
-      return 'LEFT';
-    }
   }
   return state;
 }

@@ -13,8 +13,8 @@ export const CONFIG = {
   // Класифікація через сервер
   classify: {
     intervalMs: 50, // мінімальний інтервал між POST /classify (~20/с)
-    rejectDist: 0.35, // найкращий матч гірший за це (0..1) → NEUTRAL
-    marginDist: 0.12, // 2-й кандидат ближчий за це до кращого → NEUTRAL
+    rejectDist: 0.5, // найкращий матч гірший за це (0..1) → NEUTRAL
+    marginDist: 0.08, // 2-й кандидат ближчий за це до кращого → NEUTRAL (LEFT/RIGHT розв'язуються по cx)
   },
 
   // Калібрування еталонів
