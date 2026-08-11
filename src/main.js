@@ -362,6 +362,48 @@ function setStatus(text, kind) {
   els.statusText.className = 'status-text' + (kind === 'error' ? ' error' : kind === 'warn' ? ' warn' : '');
 }
 
+/** В куті ігрового екрана — поточна маска Camera View + розпізнаний стан. */
+function drawGameOverlay() {
+  if (!game) return;
+  const ctx = game.ctx;
+  const cw = game.w;
+  const ch = game.h;
+  const m = CONFIG.tracker.maskSize;
+  const arr = tracker.last.normalized;
+  const size = Math.max(56, Math.min(92, Math.round(Math.min(cw, ch) * 0.16)));
+  const ox = cw - size - 8;
+  const oy = ch - size - 8 - 20;
+  ctx.fillStyle = 'rgba(10,10,20,0.65)';
+  ctx.fillRect(ox - 6, oy - 6, size + 12, size + 12 + 20);
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(ox - 6, oy - 6, size + 12, size + 12 + 20);
+  if (arr && arr.length === m * m) {
+    if (tmp.width !== m) {
+      tmp.width = m;
+      tmp.height = m;
+    }
+    const img = new ImageData(m, m);
+    for (let i = 0; i < m * m; i++) {
+      const v = arr[i] | 0;
+      img.data[i * 4] = v;
+      img.data[i * 4 + 1] = v;
+      img.data[i * 4 + 2] = v;
+      img.data[i * 4 + 3] = 255;
+    }
+    tmpCtx.putImageData(img, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.globalAlpha = tracker.last.mouthClosed ? 0.25 : 1;
+    ctx.drawImage(tmp, ox, oy, size, size);
+    ctx.globalAlpha = 1;
+  }
+  ctx.font = 'bold 14px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = '#ffd700';
+  ctx.fillText(tracker.last.state || 'NEUTRAL', ox + size / 2, oy + size + 5);
+}
+
 // ---------- Калібрування (новий екран) ----------
 
 const CALIB_BTN_IDS = {
@@ -531,6 +573,7 @@ function tick() {
       if (game) {
         game.tick(dt);
         game.draw();
+        drawGameOverlay();
       }
       requestAnimationFrame(tick);
       return;
@@ -598,6 +641,7 @@ function tick() {
   if (game) {
     game.tick(dt);
     game.draw();
+    drawGameOverlay();
     if (game.won) showWin(); else hideWin();
   }
 
