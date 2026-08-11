@@ -11,7 +11,7 @@ import { classify, listTemplates, getProfileKey } from './server.js';
 import { CONFIG } from './config.js';
 import { FeedingGame } from './games/feeding.js';
 import { DrawingGame } from './games/drawing.js';
-import { PlatformerGame } from './games/platformer.js';
+import { FlappyGame } from './games/flappy.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -82,25 +82,25 @@ const GAMES = {
     create: () => new DrawingGame(
       {
         cursorSpeed: CONFIG.drawing.cursorSpeed,
-        pointRadius: CONFIG.drawing.pointRadius,
+        snapRadius: CONFIG.drawing.snapRadius,
+        visitRadius: CONFIG.drawing.visitRadius,
       },
       els.gameCanvas,
     ),
   },
-  platformer: {
-    name: 'Платформер',
-    emoji: '🦖',
-    desc: 'Стрибайте та присідайте',
+  flappy: {
+    name: 'Flappy Bird',
+    emoji: '🐤',
+    desc: 'Махніть крилом язиком',
     winText: null, // без перемоги — нескінченна
-    create: () => new PlatformerGame(
+    create: () => new FlappyGame(
       {
-        baseSpeed: CONFIG.platformer.baseSpeed,
-        boostSpeed: CONFIG.platformer.boostSpeed,
-        slowSpeed: CONFIG.platformer.slowSpeed,
-        jumpVel: CONFIG.platformer.jumpVel,
-        gravity: CONFIG.platformer.gravity,
-        spacing: CONFIG.platformer.spacing,
-        spawnLead: CONFIG.platformer.spawnLead,
+        gravity: CONFIG.flappy.gravity,
+        flapVel: CONFIG.flappy.flapVel,
+        pipeSpeed: CONFIG.flappy.pipeSpeed,
+        gap: CONFIG.flappy.gap,
+        spacing: CONFIG.flappy.spacing,
+        pipeWidth: CONFIG.flappy.pipeWidth,
       },
       els.gameCanvas,
     ),
