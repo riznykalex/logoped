@@ -14,11 +14,11 @@ export class DrawingGame {
   constructor(settings, canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
-    this.cols = (settings && settings.cols) || 7; // вузлів у ряді
+    this.cols = (settings && settings.cols) || 70; // вузлів у ряді
     this.w = this.canvas.width;
     this.h = this.canvas.height;
-    this.cursorR = 10; // радіус курсора, px
     this._buildGrid();
+    this.cursorR = Math.max(4, Math.min(10, this.cell * 0.7)); // радіус курсора під розмір клітинки
     this.reset();
     // Тап по полю — очистити малюнок
     if (canvas.addEventListener) canvas.addEventListener('pointerdown', () => {
@@ -112,20 +112,22 @@ export class DrawingGame {
     }
     c.stroke();
 
-    // Вузли сітки (крапки)
+    // Вузли сітки (крапки-орієнтири; при дрібній сітці — кожен 4-й вузол)
+    const dotR = Math.max(0.8, Math.min(2.5, this.cell * 0.15));
+    const dotStep = this.cell >= 12 ? 1 : 4;
     c.fillStyle = 'rgba(255,255,255,0.22)';
-    for (let gx = 0; gx < this.cols; gx++) {
-      for (let gy = 0; gy < this.rows; gy++) {
+    for (let gx = 0; gx < this.cols; gx += dotStep) {
+      for (let gy = 0; gy < this.rows; gy += dotStep) {
         const p = this._nodePos(gx, gy);
         c.beginPath();
-        c.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
+        c.arc(p.x, p.y, dotR, 0, Math.PI * 2);
         c.fill();
       }
     }
 
     // Слід пера (лінія між вузлами)
     c.strokeStyle = '#4caf50';
-    c.lineWidth = 5;
+    c.lineWidth = Math.max(2, Math.min(5, this.cell * 0.5));
     c.lineCap = 'round';
     c.lineJoin = 'round';
     c.beginPath();
