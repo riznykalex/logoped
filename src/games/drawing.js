@@ -1,7 +1,8 @@
-// games/drawing.js — «Малювання по точках»: курсор рухається язиком
-// (UP/DOWN/LEFT/RIGHT), OPENED — перо опущено (малює). Точки з'єднані
-// пунктиром; треба відвідати їх по порядку (курсор у радіусі R із
-// опущеним пером). Після всіх точок — малюнок готовий (перемога).
+// games/drawing.js — «Малювання»: графічний редактор, де з'єднуємо точки.
+// Курсор рухається язиком (UP/DOWN/LEFT/RIGHT) і вільно малює лінію
+// (перо завжди опущене — як у редакторі). Точки фігури — орієнтири-магніти:
+// у межах snapRadius курсор притягується до точки, щоб лінія лягла точно.
+// Коли відвідані всі точки фігури — малюнок готовий (перемога).
 
 const DIRS = {
   UP: { dx: 0, dy: -1 },
@@ -41,8 +42,9 @@ export class DrawingGame {
   constructor(settings, canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
-    this.speed = (settings && settings.cursorSpeed) || 120; // швидкість курсора px/с
-    this.pointRadius = (settings && settings.pointRadius) || 26;
+    this.speed = (settings && settings.cursorSpeed) || 120;    // швидкість курсора px/с
+    this.snapRadius = (settings && settings.snapRadius) || 40; // магніт точки, px
+    this.visitRadius = (settings && settings.visitRadius) || 34; // зарахування точки, px
     this.w = this.canvas.width;
     this.h = this.canvas.height;
     this.reset();
@@ -57,13 +59,14 @@ export class DrawingGame {
   reset() {
     this.state = 'NEUTRAL';
     this.won = false;
-    this.next = 0;              // індекс наступної точки
-    this.pulse = 0;             // анімація захоплення точки
-    this.trail = [];            // [{x, y, pen}] слід пера
+    this.visited = 0;        // скільки точок відвідано
+    this.pulse = 0;          // анімація при відвідуванні точки
+    this.trail = [];         // [{x, y, pen}] слід пера
     this._buildShape();
   }
 
-  /** Обирає фігуру та масштабує точки під поле (центрований квадрат). */
+  /** Обирає фігуру, масштабує точки під поле (центрований квадрат),
+   *  курсор стартує на першій точці. */
   _buildShape() {
     const shape = SHAPES[Math.floor(Math.random() * SHAPES.length)];
     this.shapeName = shape.name;
@@ -74,7 +77,7 @@ export class DrawingGame {
       x: ox + px * size,
       y: oy + py * size,
     }));
-    // Курсор стартує на першій точці
+    this.dotHit = this.points.map(() => false);
     const p0 = this.points[0];
     this.x = p0.x;
     this.y = p0.y;
@@ -97,27 +100,35 @@ export class DrawingGame {
       this.y = Math.max(0, Math.min(this.h, this.y));
     }
 
-    const pen = this.state === 'OPENED';
-    if (pen && this.prevPen) {
-      this.trail.push({ x: this.x, y: this.y, pen: true });
-    } else if (pen) {
-      this.trail.push({ x: this.x, y: this.y, pen: false });
-      this.trail.push({ x: this.x, y: this.y, pen: true });
-    } else {
-      this.trail.push({ x: this.x, y: this.y, pen: false });
-    }
+    // Перо опущене, доки курсор рухається (вільне малювання)
+    const pen = !!d;
+    this.trail.push({ x: this.x, y: this.y, pen });
     this.prevPen = pen;
-    if (this.trail.length > 6000) this.trail.splice(0, this.trail.length - 6000);
+    if (this.trail.length > 8000) this.trail.splice(0, this.trail.length - 8000);
 
-    // Перевірка досягнення поточної точки
-    if (pen && this.next < this.points.length) {
-      const p = this.points[this.next];
-      if (Math.hypot(this.x - p.x, this.y - p.y) < this.pointRadius) {
-        this.next += 1;
-        this.pulse = 1;
-        if (this.next >= this.points.length) this.won = true;
+    // Магніт: притягує до найближчої невідвіданої точки
+    for (let i = 0; i < this.points.length; i++) {
+      if (this.dotHit[i]) continue;
+      const p = this.points[i];
+      if (Math.hypot(this.x - p.x, this.y - p.y) < this.snapRadius) {
+        this.x = p.x;
+        this.y = p.y;
+        break;
       }
     }
+
+    // Зарахування точок у радіусі
+    for (let i = 0; i < this.points.length; i++) {
+      if (this.dotHit[i]) continue;
+      const p = this.points[i];
+      if (Math.hypot(this.x - p.x, this.y - p.y) < this.visitRadius) {
+        this.dotHit[i] = true;
+        this.visited += 1;
+        this.pulse = 1;
+      }
+    }
+    if (this.visited >= this.points.length) this.won = true;
+
     if (this.pulse > 0) this.pulse = Math.max(0, this.pulse - dt * 3);
   }
 
@@ -126,10 +137,19 @@ export class DrawingGame {
     const w = this.w;
     const h = this.h;
 
-    c.fillStyle = '#12121c';
+    c.fillStyle = '#101018';
     c.fillRect(0, 0, w, h);
 
-    // Пунктирний контур-підказка між усіма точками
+    // Сітка графічного редактора
+    c.strokeStyle = 'rgba(255,255,255,0.06)';
+    c.lineWidth = 1;
+    const step = 40;
+    c.beginPath();
+    for (let x = step; x < w; x += step) { c.moveTo(x, 0); c.lineTo(x, h); }
+    for (let y = step; y < h; y += step) { c.moveTo(0, y); c.lineTo(w, y); }
+    c.stroke();
+
+    // Пунктирна лінія-підказка між точками фігури
     c.strokeStyle = 'rgba(255,255,255,0.35)';
     c.lineWidth = 2;
     c.setLineDash([6, 6]);
@@ -141,7 +161,7 @@ export class DrawingGame {
     c.stroke();
     c.setLineDash([]);
 
-    // Слід пера
+    // Слід пера (безперервна лінія малювання)
     c.strokeStyle = '#4caf50';
     c.lineWidth = 4;
     c.lineCap = 'round';
@@ -158,20 +178,19 @@ export class DrawingGame {
     }
     c.stroke();
 
-    // Точки з номерами
+    // Точки фігури з номерами
     this.points.forEach((p, i) => {
-      const done = i < this.next;
-      const cur = i === this.next;
-      const r = this.pointRadius * (cur ? 1 + this.pulse * 0.25 : 1);
+      const done = this.dotHit[i];
+      const r = this.visitRadius * (done ? 1 : 1 + this.pulse * 0.25);
       c.beginPath();
       c.arc(p.x, p.y, r, 0, Math.PI * 2);
-      c.fillStyle = done ? '#1a3a1a' : (cur ? '#4caf50' : '#2a2a3e');
+      c.fillStyle = done ? '#1a3a1a' : '#2a2a3e';
       c.fill();
-      c.strokeStyle = done ? '#4caf50' : (cur ? '#8fd08f' : '#555');
+      c.strokeStyle = done ? '#4caf50' : '#777';
       c.lineWidth = 2;
       c.stroke();
-      c.fillStyle = done || cur ? '#fff' : '#999';
-      c.font = `bold ${Math.max(12, this.pointRadius * 0.7)}px system-ui, sans-serif`;
+      c.fillStyle = done ? '#8fd08f' : '#999';
+      c.font = `bold ${Math.max(12, this.visitRadius * 0.7)}px system-ui, sans-serif`;
       c.textAlign = 'center';
       c.textBaseline = 'middle';
       c.fillText(String(i + 1), p.x, p.y + 1);
@@ -186,13 +205,13 @@ export class DrawingGame {
     c.strokeStyle = '#000';
     c.stroke();
 
-    // Підказка: скільки точок лишилось
+    // Підказка: скільки точок з'єднано
     c.textAlign = 'left';
     c.textBaseline = 'top';
     c.fillStyle = '#fff';
     c.font = 'bold 20px system-ui, sans-serif';
     c.fillText(
-      'Точки: ' + this.next + ' / ' + this.points.length + ' (' + this.shapeName + ')',
+      'Точки: ' + this.visited + ' / ' + this.points.length + ' (' + this.shapeName + ')',
       10, 8,
     );
   }
