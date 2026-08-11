@@ -181,7 +181,7 @@ export class FlappyGame {
     this.by = Math.max(this.centerY - this.tolerance, Math.min(this.centerY + this.tolerance, this.by));
 
     this.animT += dt;
-    this.groundX = (this.groundX - this.speed * dt) % 308;
+    this.groundX = ((this.groundX - this.speed * dt) % 308 + 308) % 308;
 
     // --- Труби та монетки рухаються вліво ---
     for (const p of this.pipes) p.x -= this.speed * dt;
@@ -289,8 +289,9 @@ export class FlappyGame {
       c.fill();
     }
 
-    // Земля (спрайт, рухається)
+    // Земля (спрайт, циклічний — 3 тайли покривають весь екран)
     if (imgReady(SPR.ground)) {
+      c.drawImage(SPR.ground, 0, 0, 308, 56, this.groundX - 308, groundY, 308, 56);
       c.drawImage(SPR.ground, 0, 0, 308, 56, this.groundX, groundY, 308, 56);
       c.drawImage(SPR.ground, 0, 0, 308, 56, this.groundX + 308, groundY, 308, 56);
       c.fillStyle = '#1c2a14';
@@ -314,16 +315,12 @@ export class FlappyGame {
     c.stroke();
     c.setLineDash([]);
 
-    // Пташка — спрайт, дзеркальний горизонтально (дивиться вправо)
+    // Пташка — спрайт вже дивиться вправо, без дзеркалювання
     if (imgReady(SPR.bird)) {
-      const frame = Math.floor(this.animT * 6) % 3; // 0,1,2,1... → просто цикл 3 кадрів
+      const frame = Math.floor(this.animT * 6) % 3; // анімація крил (3 кадри)
       const bw = this.r * 2.8;
       const bh = this.r * 2.0;
-      c.save();
-      c.translate(this.bx, this.by);
-      c.scale(-1, 1);
-      c.drawImage(SPR.bird, frame * FRAME_W, 0, FRAME_W, BIRD_ATLAS_H, -bw / 2, -bh / 2, bw, bh);
-      c.restore();
+      c.drawImage(SPR.bird, frame * FRAME_W, 0, FRAME_W, BIRD_ATLAS_H, this.bx - bw / 2, this.by - bh / 2, bw, bh);
     } else {
       c.font = `${Math.round(this.r * 2.4)}px system-ui, sans-serif`;
       c.textAlign = 'center';
