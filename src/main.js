@@ -148,16 +148,17 @@ function queueMask(mask) {
 }
 
 /**
- * Фінальний стан за відповіддю сервера: поріг впевненості, запас до
- * другого кандидата і tie-break LEFT/RIGHT за центроїдом темряви cx
- * (менше 32 — пляма зліва, більше — справа).
+ * Фінальний стан за відповіддю сервера. Це тренажер: «вправа → відпочинок».
+ * Поки рот відкритий (вправа) NEUTRAL НЕ з'являється: невпевнений матч тримає
+ * попередній стан, LEFT/RIGHT розв'язуються за центроїдом темряви cx.
+ * Відпочинок = рот закритий (окрема гілка, де стан стає NEUTRAL).
  */
-function resolveState(res, cx) {
+function resolveState(res, cx, lastState) {
   const dists = res.dists || {};
-  let state = res.state || 'NEUTRAL';
+  const state = res.state || 'NEUTRAL';
 
-  // 1. Матч занадто поганий — не розпізнано
-  if (res.dist > CONFIG.classify.rejectDist) return 'NEUTRAL';
+  // 1. Матч занадто поганий — вправа не "випадає": тримаємо попередній стан
+  if (res.dist > CONFIG.classify.rejectDist) return lastState || 'NEUTRAL';
 
   // 2. Другий кандидат майже такий самий — неоднозначно
   const margin = CONFIG.classify.marginDist;
@@ -172,13 +173,13 @@ function resolveState(res, cx) {
   }
   const tie = Number.isFinite(second) && second - res.dist < margin;
   if (tie) {
-    // 3. Пара LEFT/RIGHT майже однакова — розв'язуємо геометрією маски (cx):
-    //    пляма темряви зліва/справа, не падаємо в NEUTRAL
+    // 3. Пара LEFT/RIGHT — розв'язуємо геометрією маски (пляма зліва/справа)
     if (cx >= 0) {
       if (state === 'LEFT' && secondName === 'RIGHT') return cx >= 32 ? 'RIGHT' : 'LEFT';
       if (state === 'RIGHT' && secondName === 'LEFT') return cx < 32 ? 'LEFT' : 'RIGHT';
     }
-    return 'NEUTRAL';
+    // Інша неоднозначність — тримаємо попередній стан, без NEUTRAL
+    return lastState || 'NEUTRAL';
   }
   return state;
 }
@@ -192,7 +193,7 @@ function pumpClassify(now) {
   inFlight = true;
   classify(mask)
     .then((res) => {
-      tracker.last.state = resolveState(res, tracker.last.cx);
+      tracker.last.state = resolveState(res, tracker.last.cx, tracker.last.state);
       tracker.last.dist = res.dist;
       if (serverErrorShown) {
         serverErrorShown = false;
@@ -402,7 +403,8 @@ function drawGameOverlay() {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   ctx.fillStyle = '#ffd700';
-  ctx.fillText(tracker.last.state || 'NEUTRAL', ox + size / 2, oy + size + 5);
+  const label = tracker.last.state === 'NEUTRAL' ? 'Спокій' : (tracker.last.state || 'Спокій');
+  ctx.fillText(label, ox + size / 2, oy + size + 5);
 }
 
 // ---------- Калібрування (новий екран) ----------
