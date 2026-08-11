@@ -9,6 +9,9 @@ import { CalibrationUI } from './calibration.js';
 import { SnakeGame } from './games/snake.js';
 import { classify, listTemplates, getProfileKey } from './server.js';
 import { CONFIG } from './config.js';
+import { FeedingGame } from './games/feeding.js';
+import { DrawingGame } from './games/drawing.js';
+import { PlatformerGame } from './games/platformer.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -33,17 +36,91 @@ const tracker = new TongueTracker(settingsUI);
 const hold = new HoldFilter(CONFIG.hold.ms);
 const cal = new CalibrationUI();
 cal.onMessage = (msg) => setStatus(msg, 'info');
-const game = new SnakeGame(
-  {
-    stepMs: CONFIG.snake.stepMs,
-    speedupPerFruit: CONFIG.snake.speedupPerFruit,
-    minStepMs: CONFIG.snake.minStepMs,
-    winScore: CONFIG.snake.winScore,
-    cols: CONFIG.snake.cols,
-    rows: CONFIG.snake.rows,
+
+// ---------- Реєстр ігор ----------
+// Кожна гра має спільний інтерфейс: create() повертає об'єкт з методами
+// onState(state), tick(dt), draw(), reset() та властивостями w/h/won.
+const GAMES = {
+  snake: {
+    name: 'Змійка',
+    emoji: '🐍',
+    desc: 'Зберіть фрукти язиком!',
+    winText: () => 'Ви зібрали всі ' + CONFIG.snake.winScore + ' фруктів!',
+    create: () => new SnakeGame(
+      {
+        stepMs: CONFIG.snake.stepMs,
+        speedupPerFruit: CONFIG.snake.speedupPerFruit,
+        minStepMs: CONFIG.snake.minStepMs,
+        winScore: CONFIG.snake.winScore,
+        cols: CONFIG.snake.cols,
+        rows: CONFIG.snake.rows,
+      },
+      els.gameCanvas,
+    ),
   },
-  els.gameCanvas,
-);
+  feeding: {
+    name: 'Годування',
+    emoji: '🐸',
+    desc: 'Нагодуйте героя їжею',
+    winText: () => 'Ви нагодували героя!',
+    create: () => new FeedingGame(
+      {
+        speed: CONFIG.feeding.speed,
+        holdMs: CONFIG.feeding.holdMs,
+        spawnPauseMs: CONFIG.feeding.spawnPauseMs,
+        celebrationMs: CONFIG.feeding.celebrationMs,
+        winScore: CONFIG.feeding.winScore,
+      },
+      els.gameCanvas,
+    ),
+  },
+  drawing: {
+    name: 'Малювання',
+    emoji: '✏️',
+    desc: 'Обведіть малюнок по точках',
+    winText: () => 'Малюнок готовий!',
+    create: () => new DrawingGame(
+      {
+        cursorSpeed: CONFIG.drawing.cursorSpeed,
+        pointRadius: CONFIG.drawing.pointRadius,
+      },
+      els.gameCanvas,
+    ),
+  },
+  platformer: {
+    name: 'Платформер',
+    emoji: '🦖',
+    desc: 'Стрибайте та присідайте',
+    winText: null, // без перемоги — нескінченна
+    create: () => new PlatformerGame(
+      {
+        baseSpeed: CONFIG.platformer.baseSpeed,
+        boostSpeed: CONFIG.platformer.boostSpeed,
+        slowSpeed: CONFIG.platformer.slowSpeed,
+        jumpVel: CONFIG.platformer.jumpVel,
+        gravity: CONFIG.platformer.gravity,
+        spacing: CONFIG.platformer.spacing,
+        spawnLead: CONFIG.platformer.spawnLead,
+      },
+      els.gameCanvas,
+    ),
+  },
+};
+
+let game = null;       // екземпляр активної гри
+let activeGame = null; // id активної гри з реєстру GAMES
+
+/** Створює гру з реєстру (викликається з index.html при виборі картки). */
+function startGame(id) {
+  const g = GAMES[id];
+  if (!g) return;
+  activeGame = id;
+  game = g.create();
+  hideWin();
+  hold.reset();
+  setStatus('Гра: ' + g.name + ' — керуйте язиком', 'info');
+}
+window.__startGame = startGame;
 
 let stream = null;
 let lastT = performance.now();
@@ -82,7 +159,7 @@ function pumpClassify(now) {
     .catch((err) => {
       tracker.last.state = 'NEUTRAL';
       hold.reset();
-      game.onState('NEUTRAL');
+      if (game) game.onState('NEUTRAL');
       if (!serverErrorShown) {
         serverErrorShown = true;
         setStatus('Сервер класифікації недоступний: ' + err.message + ' — перевірте адресу в config.js.', 'error');
@@ -308,7 +385,8 @@ function showWin() {
   const ov = $('winOverlay');
   if (!ov) return;
   const sub = $('winSub');
-  if (sub) sub.textContent = 'Ви зібрали всі ' + CONFIG.snake.winScore + ' фруктів!';
+  const g = activeGame ? GAMES[activeGame] : null;
+  if (sub) sub.textContent = g && g.winText ? g.winText() : 'Перемога!';
   ov.classList.add('show');
 }
 
@@ -318,7 +396,7 @@ function hideWin() {
 }
 
 function restartGame() {
-  game.reset();
+  if (game) game.reset();
   hold.reset();
   hideWin();
   setStatus('Гру перезапущено', 'info');
@@ -340,7 +418,7 @@ function tick() {
   lastT = now;
 
   // Канвас гри міг змінити розмір (поворот екрана) — перекомпонувати сітку.
-  if (game.w !== game.canvas.width || game.h !== game.canvas.height) {
+  if (game && (game.w !== game.canvas.width || game.h !== game.canvas.height)) {
     game.resize();
   }
 
@@ -387,11 +465,13 @@ function tick() {
       calibCtx.fillText('FACE NOT DETECTED', 20, 40);
       if (now - lastFaceSeen > CONFIG.face.lostPauseMs) {
         hold.reset();
-        game.onState('NEUTRAL');
+        if (game) game.onState('NEUTRAL');
       }
       drawPanels(tracker.last);
-      game.tick(dt);
-      game.draw();
+      if (game) {
+        game.tick(dt);
+        game.draw();
+      }
       requestAnimationFrame(tick);
       return;
     }
@@ -425,19 +505,21 @@ function tick() {
       pendingMask = null;
       tracker.last.state = 'NEUTRAL';
       hold.reset();
-      game.onState('NEUTRAL');
+      if (game) game.onState('NEUTRAL');
     } else {
       queueMask(last.normalized);
       pumpClassify(now);
       // Стабілізований стан → гра
       const confirmed = hold.update(last.state, now);
-      game.onState(confirmed);
+      if (game) game.onState(confirmed);
     }
   }
 
-  game.tick(dt);
-  game.draw();
-  if (game.won) showWin(); else hideWin();
+  if (game) {
+    game.tick(dt);
+    game.draw();
+    if (game.won) showWin(); else hideWin();
+  }
 
   requestAnimationFrame(tick);
 }
@@ -451,7 +533,7 @@ window.addEventListener('keydown', (e) => {
 });
 
 window.addEventListener('resize', () => {
-  if (game.resize) game.resize();
+  if (game && game.resize) game.resize();
 });
 
 // ---------- Старт ----------
