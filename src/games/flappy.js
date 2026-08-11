@@ -1,18 +1,29 @@
-// games/flappy.js — «Flappy Bird»: пташка падає під дією гравітації,
-// мах крилом — будь-який напрямок язика (UP/DOWN/LEFT/RIGHT): щоразу,
-// коли язик виходить із нейтралі в напрямок, пташка підстрибує.
-// Зіткнення з трубою або землею — миттєвий автоматичний рестарт.
-// Рахунок = пройдені труби. Перемоги немає — гра нескінченна.
+// games/flappy.js — «Flappy Bird» (полегшений): пташка ширяє низько над
+// землею і НЕ падає, коли язик у нейтралі. Керування:
+//   UP    — летіти вгору
+//   DOWN  — летіти вниз
+//   LEFT  — гальмувати (швидкість труб падає майже до зупинки)
+//   RIGHT — прискорювати (рух уперед)
+// Гра починається повільно (startSpeed) і природно прискорюється за кожну
+// пройдену трубу. Зіткнення з трубою — миттєвий автоматичний рестарт.
+// Земля/стеля не вбивають — позиція обмежена. Перемоги немає — гра нескінченна.
 
 export class FlappyGame {
   constructor(settings, canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
-    this.gravity = (settings && settings.gravity) || 1500; // px/с²
-    this.flapVel = (settings && settings.flapVel) || 420;  // імпульс маху, px/с
-    this.pipeSpeed = (settings && settings.pipeSpeed) || 140;
-    this.gap = (settings && settings.gap) || 170;          // прохід між трубами, px
-    this.spacing = (settings && settings.spacing) || 230;  // крок між трубами, px
+    this.startSpeed = (settings && settings.startSpeed) || 55; // повільний старт, px/с
+    this.maxSpeed = (settings && settings.maxSpeed) || 160;
+    this.minSpeed = (settings && settings.minSpeed) || 8;      // LEFT майже зупиняє
+    this.accel = (settings && settings.accel) || 90;          // RIGHT, px/с²
+    this.decel = (settings && settings.decel) || 140;         // LEFT, px/с²
+    this.rampPerPipe = (settings && settings.rampPerPipe) || 3; // пришвидшення за трубу
+    this.climbSpeed = (settings && settings.climbSpeed) || 170; // вертикаль UP/DOWN, px/с
+    this.hoverAbove = (settings && settings.hoverAbove) || 70;  // висота ширяння над землею
+    this.spring = (settings && settings.spring) || 9;           // повернення до ширяння, 1/с
+    this.damp = (settings && settings.damp) || 0.92;            // гасіння коливань
+    this.gap = (settings && settings.gap) || 200;               // прохід між трубами, px
+    this.spacing = (settings && settings.spacing) || 240;       // крок між трубами, px
     this.pipeWidth = (settings && settings.pipeWidth) || 60;
     this.w = this.canvas.width;
     this.h = this.canvas.height;
@@ -23,64 +34,78 @@ export class FlappyGame {
     this.w = this.canvas.width;
     this.h = this.canvas.height;
     this.groundH = Math.max(70, this.h * 0.12);
+    this.hoverY = this.h - this.groundH - this.hoverAbove;
+    this.by = this.hoverY;
   }
 
   reset() {
     this.state = 'NEUTRAL';
     this.won = false;
     this.groundH = Math.max(70, this.h * 0.12);
+    this.hoverY = this.h - this.groundH - this.hoverAbove;
     this.bx = Math.max(40, this.w * 0.28);
-    this.by = this.h / 2;
+    this.by = this.hoverY;      // старт на рівні ширяння, а не падіння
     this.vy = 0;
     this.r = Math.max(12, Math.min(this.w, this.h) * 0.03);
+    this.speed = this.startSpeed; // гра починається повільно
     this.score = 0;
     this.pipes = [];
-    this.hitFlash = 0;   // короткий червоний спалах при зіткненні
-    this.lastWasDir = false;
+    this.hitFlash = 0;
     this._spawnPipe(this.w + 80);
   }
 
   _spawnPipe(x) {
-    const minTop = this.gap * 0.4 + 10;
-    const maxTop = this.h - this.groundH - this.gap - this.gap * 0.4;
-    const top = minTop + Math.random() * Math.max(10, maxTop - minTop);
+    // Прохід може зсуватися по вертикалі, але не впритул до землі/стелі,
+    // щоб пташка на рівні ширяння могла проходити деякі труби без підйому
+    const avail = this.h - this.groundH - this.gap;
+    const margin = 30;
+    const top = margin + Math.random() * Math.max(1, avail - 2 * margin);
     this.pipes.push({ x, top, scored: false });
   }
 
   onState(state) {
-    const isDir = state === 'UP' || state === 'DOWN' || state === 'LEFT' || state === 'RIGHT';
-    // Висхідний фронт: будь-який напрямок язика = мах крилом
-    if (isDir && !this.lastWasDir) this.vy = -this.flapVel;
-    this.lastWasDir = isDir;
     this.state = state;
   }
 
   tick(dt) {
-    // Гравітація
-    this.vy += this.gravity * dt;
-    this.by += this.vy * dt;
+    // --- Швидкість: LEFT гальмує, RIGHT прискорює ---
+    if (this.state === 'LEFT') {
+      this.speed = Math.max(this.minSpeed, this.speed - this.decel * dt);
+    } else if (this.state === 'RIGHT') {
+      this.speed = Math.min(this.maxSpeed, this.speed + this.accel * dt);
+    }
 
-    // Труби рухаються вліво
-    for (const p of this.pipes) p.x -= this.pipeSpeed * dt;
+    // --- Висота: UP вгору, DOWN вниз, інакше пружина до рівня ширяння ---
+    if (this.state === 'UP') {
+      this.by -= this.climbSpeed * dt;
+      this.vy = -this.climbSpeed;
+    } else if (this.state === 'DOWN') {
+      this.by += this.climbSpeed * dt;
+      this.vy = this.climbSpeed;
+    } else {
+      this.vy += (this.hoverY - this.by) * this.spring * dt;
+      this.vy *= Math.pow(this.damp, dt * 60);
+      this.by += this.vy * dt;
+    }
+    // Земля/стеля не вбивають — лише обмеження
+    this.by = Math.max(this.r, Math.min(this.h - this.groundH - this.r, this.by));
+
+    // --- Труби ---
+    for (const p of this.pipes) p.x -= this.speed * dt;
     const last = this.pipes[this.pipes.length - 1];
     if (!last || last.x < this.w - this.spacing) this._spawnPipe(this.w + 20);
     this.pipes = this.pipes.filter((p) => p.x + this.pipeWidth > -20);
 
-    // Рахунок: труба пройдена
+    // Рахунок і природне пришвидшення за пройдену трубу
     for (const p of this.pipes) {
       if (!p.scored && p.x + this.pipeWidth < this.bx - this.r) {
         p.scored = true;
         this.score += 1;
+        this.speed = Math.min(this.maxSpeed, this.speed + this.rampPerPipe);
       }
     }
 
-    // Зіткнення: земля / стеля / труби → миттєвий рестарт
-    const groundY = this.h - this.groundH;
-    if (this.by + this.r >= groundY || this.by - this.r <= 0) {
-      this.reset();
-      this.hitFlash = 1;
-      return;
-    }
+    // Зіткнення з трубою → автоматичний рестарт
     for (const p of this.pipes) {
       if (this._hitPipe(p)) {
         this.reset();
@@ -130,10 +155,20 @@ export class FlappyGame {
     c.fillStyle = '#4caf50';
     c.fillRect(0, groundY, w, 4);
 
-    // Пташка (повертається за швидкістю)
+    // Лінія ширяння (підказка рівня)
+    c.strokeStyle = 'rgba(255,255,255,0.15)';
+    c.lineWidth = 1;
+    c.setLineDash([4, 8]);
+    c.beginPath();
+    c.moveTo(0, this.hoverY);
+    c.lineTo(w, this.hoverY);
+    c.stroke();
+    c.setLineDash([]);
+
+    // Пташка (повертається за вертикальною швидкістю)
     c.save();
     c.translate(this.bx, this.by);
-    c.rotate(Math.max(-0.6, Math.min(1.1, this.vy * 0.002)));
+    c.rotate(Math.max(-0.5, Math.min(0.5, -this.vy * 0.0015)));
     c.font = `${Math.round(this.r * 2.4)}px system-ui, sans-serif`;
     c.textAlign = 'center';
     c.textBaseline = 'middle';
@@ -152,6 +187,11 @@ export class FlappyGame {
     c.fillStyle = '#fff';
     c.font = 'bold 20px system-ui, sans-serif';
     c.fillText('Score: ' + this.score, 10, 8);
+
+    // Швидкість (зворотний зв'язок LEFT/RIGHT)
+    c.font = '14px system-ui, sans-serif';
+    c.fillStyle = '#ffc800';
+    c.fillText('◄◄ ' + Math.round(this.speed) + ' px/с ►►', 10, 34);
   }
 
   _pipe(x, y, hh, isUpper) {
