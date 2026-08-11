@@ -378,7 +378,7 @@ export class FlappyGame {
       c.textBaseline = 'top';
       c.fillStyle = '#fff';
       c.font = 'bold 24px system-ui, sans-serif';
-      c.fillText('Тренування — труб поки немає', w / 2, h * 0.20 + 14);
+      c.fillText('Тренування — поки немає труб', w / 2, h * 0.20 + 14);
       c.font = '16px system-ui, sans-serif';
       c.fillStyle = '#ffd700';
       c.fillText('Паттерн: ' + this.state, w / 2, h * 0.20 + 50);
