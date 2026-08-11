@@ -61,14 +61,16 @@ const GAMES = {
   feeding: {
     name: 'Годування',
     emoji: '🐸',
-    desc: 'Нагодуйте героя їжею',
+    desc: 'Зловіть їстівне! ▼ швидше, ▲ повільніше',
     winText: () => 'Ви нагодували героя!',
     create: () => new FeedingGame(
       {
-        speed: CONFIG.feeding.speed,
-        holdMs: CONFIG.feeding.holdMs,
+        heroSpeed: CONFIG.feeding.heroSpeed,
+        fallSpeed: CONFIG.feeding.fallSpeed,
+        downMult: CONFIG.feeding.downMult,
+        upMult: CONFIG.feeding.upMult,
         spawnPauseMs: CONFIG.feeding.spawnPauseMs,
-        celebrationMs: CONFIG.feeding.celebrationMs,
+        emotionMs: CONFIG.feeding.emotionMs,
         winScore: CONFIG.feeding.winScore,
       },
       els.gameCanvas,
