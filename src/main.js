@@ -38,6 +38,7 @@ const game = new SnakeGame(
     stepMs: CONFIG.snake.stepMs,
     speedupPerFruit: CONFIG.snake.speedupPerFruit,
     minStepMs: CONFIG.snake.minStepMs,
+    winScore: CONFIG.snake.winScore,
     cols: CONFIG.snake.cols,
     rows: CONFIG.snake.rows,
   },
@@ -301,6 +302,38 @@ window.__calibCapture = async (state, btn) => {
 
 // ---------- Головний цикл ----------
 
+// ---------- Перемога / перезапуск гри ----------
+
+function showWin() {
+  const ov = $('winOverlay');
+  if (!ov) return;
+  const sub = $('winSub');
+  if (sub) sub.textContent = 'Ви зібрали всі ' + CONFIG.snake.winScore + ' фруктів!';
+  ov.classList.add('show');
+}
+
+function hideWin() {
+  const ov = $('winOverlay');
+  if (ov) ov.classList.remove('show');
+}
+
+function restartGame() {
+  game.reset();
+  hold.reset();
+  hideWin();
+  setStatus('Гру перезапущено', 'info');
+}
+
+// «Грати ще раз» після перемоги
+const btnPlayAgain = $('btnPlayAgain');
+if (btnPlayAgain) btnPlayAgain.addEventListener('click', restartGame);
+// «Вихід» з екрана перемоги — теж перезапуск
+const btnWinExit = $('btnWinExit');
+if (btnWinExit) btnWinExit.addEventListener('click', restartGame);
+// Вихід з гри (⚙️) — перезапуск гри, як домовились
+const btnBackToCamera = $('btnBackToCamera');
+if (btnBackToCamera) btnBackToCamera.addEventListener('click', restartGame);
+
 function tick() {
   const now = performance.now();
   const dt = Math.min(0.1, Math.max(0, (now - lastT) / 1000));
@@ -404,6 +437,7 @@ function tick() {
 
   game.tick(dt);
   game.draw();
+  if (game.won) showWin(); else hideWin();
 
   requestAnimationFrame(tick);
 }
@@ -412,9 +446,7 @@ function tick() {
 
 window.addEventListener('keydown', (e) => {
   if (e.key === 'r' || e.key === 'R') {
-    game.reset();
-    hold.reset();
-    setStatus('Гру перезапущено', 'info');
+    restartGame();
   }
 });
 
