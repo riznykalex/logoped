@@ -95,9 +95,16 @@ const GAMES = {
     winText: null, // без перемоги — нескінченна
     create: () => new FlappyGame(
       {
-        gravity: CONFIG.flappy.gravity,
-        flapVel: CONFIG.flappy.flapVel,
-        pipeSpeed: CONFIG.flappy.pipeSpeed,
+        startSpeed: CONFIG.flappy.startSpeed,
+        maxSpeed: CONFIG.flappy.maxSpeed,
+        minSpeed: CONFIG.flappy.minSpeed,
+        accel: CONFIG.flappy.accel,
+        decel: CONFIG.flappy.decel,
+        rampPerPipe: CONFIG.flappy.rampPerPipe,
+        climbSpeed: CONFIG.flappy.climbSpeed,
+        hoverAbove: CONFIG.flappy.hoverAbove,
+        spring: CONFIG.flappy.spring,
+        damp: CONFIG.flappy.damp,
         gap: CONFIG.flappy.gap,
         spacing: CONFIG.flappy.spacing,
         pipeWidth: CONFIG.flappy.pipeWidth,
