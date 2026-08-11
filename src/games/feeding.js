@@ -13,6 +13,9 @@ const HERO_EMOJI = '🐸';
 const HERO_EMOTION_EMOJI = { idle: '🐸', happy: '😄', sad: '🙁', sleep: '🐸' };
 
 const SPR = { closed: null, open: null };
+const FROG_W = 100;
+const FROG_H = 128;
+const MOUTH_OPEN_MS = 450; // скільки тримати рот відкритим після дотику, мс
 let spritesInit = false;
 
 function loadSprites() {
@@ -54,9 +57,9 @@ export class FeedingGame {
     this.h = this.canvas.height;
     this.groundH = Math.max(60, this.h * 0.1);
     this.groundY = this.h - this.groundH;
-    this.heroR = Math.max(16, Math.min(this.w, this.h) * 0.07);
+    this.heroHalfW = FROG_W / 2;
     this.heroX = this.w / 2;
-    this.heroY = this.groundY - this.heroR;
+    this.heroY = this.groundY - FROG_H / 2;
   }
 
   reset() {
@@ -65,13 +68,15 @@ export class FeedingGame {
     this.state = 'NEUTRAL';
     this.emotion = 'sleep';      // idle | happy | sad | sleep
     this.emotionLeft = 0;
+    this.mouthOpen = false;
+    this.mouthOpenLeft = 0;
     this.spawnPauseLeft = this.spawnPauseMs;
     this.item = null;
     this.groundH = Math.max(60, this.h * 0.1);
     this.groundY = this.h - this.groundH;
-    this.heroR = Math.max(16, Math.min(this.w, this.h) * 0.07);
+    this.heroHalfW = FROG_W / 2;
     this.heroX = this.w / 2;
-    this.heroY = this.groundY - this.heroR;
+    this.heroY = this.groundY - FROG_H / 2;
   }
 
   onState(state) {
@@ -93,7 +98,20 @@ export class FeedingGame {
   }
 
   _overHero() {
-    return Math.abs(this.item.x - this.heroX) < this.item.r + this.heroR;
+    return Math.abs(this.item.x - this.heroX) < this.item.r + this.heroHalfW;
+  }
+
+  // Предмет «трохи зайшов» на зображення жаби (коло перетинає прямокутник 100×128)
+  _hitFrog() {
+    const left = this.heroX - this.heroHalfW;
+    const right = this.heroX + this.heroHalfW;
+    const top = this.groundY - FROG_H;
+    const bottom = this.groundY;
+    const nx = Math.max(left, Math.min(this.item.x, right));
+    const ny = Math.max(top, Math.min(this.item.y, bottom));
+    const dx = this.item.x - nx;
+    const dy = this.item.y - ny;
+    return dx * dx + dy * dy < this.item.r * this.item.r;
   }
 
   _catch() {
@@ -120,11 +138,17 @@ export class FeedingGame {
       if (this.emotionLeft <= 0) this.emotion = 'sleep';
     }
 
+    // Рот закривається після короткої паузи після дотику
+    if (this.mouthOpenLeft > 0) {
+      this.mouthOpenLeft -= ms;
+      if (this.mouthOpenLeft <= 0) this.mouthOpen = false;
+    }
+
     // Рух героя вліво-вправо (завжди доступний)
     if (this.state === 'LEFT') {
-      this.heroX = Math.max(this.heroR, this.heroX - this.heroSpeed * dt);
+      this.heroX = Math.max(this.heroHalfW, this.heroX - this.heroSpeed * dt);
     } else if (this.state === 'RIGHT') {
-      this.heroX = Math.min(this.w - this.heroR, this.heroX + this.heroSpeed * dt);
+      this.heroX = Math.min(this.w - this.heroHalfW, this.heroX + this.heroSpeed * dt);
     }
 
     if (!this.item) {
@@ -147,8 +171,10 @@ export class FeedingGame {
     }
     this.item.y += this.fallSpeed * mult * dt;
 
-    // Спіймано героєм (предмет дійшов до голови героя і перекривається по X)
-    if (this.item.y >= this.heroY - this.item.r && this._overHero()) {
+    // Спіймано: предмет трохи зайшов на зображення жаби
+    if (this._hitFrog()) {
+      this.mouthOpen = !!this.item.edible;
+      this.mouthOpenLeft = MOUTH_OPEN_MS;
       this._catch();
       return;
     }
@@ -165,7 +191,12 @@ export class FeedingGame {
     const w = this.w;
     const h = this.h;
 
-    c.fillStyle = '#12121c';
+    // Градієнтний фон (небо)
+    const grad = c.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, '#2b5876');
+    grad.addColorStop(0.7, '#4e4376');
+    grad.addColorStop(1, '#1c2333');
+    c.fillStyle = grad;
     c.fillRect(0, 0, w, h);
 
     // Трава — нижній ряд
@@ -174,7 +205,26 @@ export class FeedingGame {
     c.fillStyle = '#4caf50';
     c.fillRect(0, this.groundY, w, 4);
 
-    // Падаючий предмет
+    // Герой: спрайт 100×128 — фіксована висота 128px, низ стоїть на землі.
+    // Рот відкритий (frog2) у момент/після дотику їстівного, інакше закритий.
+    const spr = this.mouthOpen ? SPR.open : SPR.closed;
+    if (imgReady(spr)) {
+      const sprW = FROG_H * (spr.naturalWidth / spr.naturalHeight);
+      c.drawImage(spr, this.heroX - sprW / 2, this.groundY - FROG_H, sprW, FROG_H);
+    } else {
+      c.font = `${Math.round(FROG_H * 0.5)}px system-ui, sans-serif`;
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.fillText(HERO_EMOTION_EMOJI[this.emotion] || HERO_EMOJI, this.heroX, this.heroY);
+      if (this.emotion === 'sleep') {
+        c.font = `${Math.round(FROG_H * 0.16)}px system-ui, sans-serif`;
+        c.fillStyle = '#9ad0ff';
+        const bob = Math.sin(Date.now() / 500) * FROG_H * 0.04;
+        c.fillText('Z-z-z', this.heroX + FROG_H * 0.45, this.heroY - FROG_H * 0.4 + bob);
+      }
+    }
+
+    // Падаючий предмет — поверх жаби
     if (this.item) {
       const fs = this.item.r * 2;
       c.font = `${Math.round(fs)}px system-ui, sans-serif`;
@@ -187,28 +237,6 @@ export class FeedingGame {
       c.strokeStyle = this.item.edible ? 'rgba(76,175,80,0.75)' : 'rgba(230,70,70,0.75)';
       c.lineWidth = 2.5;
       c.stroke();
-    }
-
-    // Герой: рот відкритий, коли падає їстівне, інакше закритий
-    const mouthOpen = !!(this.item && this.item.edible);
-    const spr = mouthOpen ? SPR.open : SPR.closed;
-    const heroSize = this.heroR * 2;
-    if (imgReady(spr)) {
-      // спрайт 100×128 — зберігаємо пропорції, низ стоїть на землі
-      const sprH = heroSize * 2;
-      const sprW = sprH * (spr.naturalWidth / spr.naturalHeight);
-      c.drawImage(spr, this.heroX - sprW / 2, this.groundY - sprH, sprW, sprH);
-    } else {
-      c.font = `${Math.round(heroSize * 1.2)}px system-ui, sans-serif`;
-      c.textAlign = 'center';
-      c.textBaseline = 'middle';
-      c.fillText(HERO_EMOTION_EMOJI[this.emotion] || HERO_EMOJI, this.heroX, this.heroY + heroSize * 0.05);
-      if (this.emotion === 'sleep') {
-        c.font = `${Math.round(heroSize * 0.4)}px system-ui, sans-serif`;
-        c.fillStyle = '#9ad0ff';
-        const bob = Math.sin(Date.now() / 500) * heroSize * 0.08;
-        c.fillText('Z-z-z', this.heroX + heroSize * 0.9, this.heroY - heroSize * 0.7 + bob);
-      }
     }
 
     // Підказки керування
