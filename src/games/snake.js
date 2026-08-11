@@ -23,6 +23,7 @@ export class SnakeGame {
     this.baseStepMs = (settings && settings.stepMs) || 900;
     this.speedupPerFruit = (settings && settings.speedupPerFruit) || 30;
     this.minStepMs = (settings && settings.minStepMs) || 300;
+    this.winScore = (settings && settings.winScore) || 12;
     this._layout();
     this.reset();
   }
@@ -53,6 +54,7 @@ export class SnakeGame {
     this.state = 'NEUTRAL';
     this.accum = 0;
     this.score = 0;
+    this.won = false;
     this.stepMs = this.baseStepMs;
     this.fruit = null;
     this._spawnFruit();
@@ -71,6 +73,7 @@ export class SnakeGame {
   }
 
   onState(state) {
+    if (this.won) return; // після перемоги керування ігнорується
     this.state = state;
     const d = DIRS[state];
     if (!d) return; // NEUTRAL / OPENED — напрямок не змінюємо
@@ -82,7 +85,7 @@ export class SnakeGame {
   }
 
   tick(dt) {
-    if (!DIRS[this.state]) return; // пауза, поки язик не спрямований у бік
+    if (this.won || !DIRS[this.state]) return; // пауза або перемога
     this.accum += dt * 1000;
     while (this.accum >= this.stepMs) {
       this.accum -= this.stepMs;
@@ -99,7 +102,12 @@ export class SnakeGame {
     if (this.fruit && nx === this.fruit.x && ny === this.fruit.y) {
       this.score += 1;
       this.stepMs = Math.max(this.minStepMs, this.stepMs - this.speedupPerFruit);
-      this._spawnFruit();
+      if (this.score >= this.winScore) {
+        this.won = true;
+        this.fruit = null; // перемога — гра завершена
+      } else {
+        this._spawnFruit();
+      }
     } else {
       this.snake.pop();
     }
