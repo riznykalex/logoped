@@ -232,6 +232,15 @@
       justify-content: center;
     }
     .calib-cross .cell.empty { visibility: hidden; }
+    .calib-neutral-row {
+      display: flex;
+      justify-content: center;
+      margin-top: 10px;
+    }
+    .calib-neutral {
+      width: 160px; height: 44px;
+      font-size: 16px;
+    }
 
     .calib-btn {
       width: 80px; height: 56px;
@@ -563,6 +572,10 @@
         </div>
         <div class="cell empty"></div>
       </div>
+      <div class="calib-neutral-row">
+        <button class="calib-btn calib-neutral" id="btnCalibNeutral" data-state="NEUTRAL"
+                data-tooltip="Язик у спокої, рот розслаблений">😐 Спокій</button>
+      </div>
     </div>
 
     <div id="calibFooter">
@@ -726,7 +739,7 @@
 
   <!-- Підключення основного модуля. v=2: cache-busting — після кожної зміни JS
        оновлюйте номер, щоб браузер і Cloudflare-кеш не віддавали стару версію. -->
-  <script type="module" src="src/main.js?v=14"></script>
+  <script type="module" src="src/main.js?v=15"></script>
 
 </body>
 </html>

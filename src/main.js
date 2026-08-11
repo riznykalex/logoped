@@ -147,6 +147,41 @@ function queueMask(mask) {
   pendingMask = mask;
 }
 
+/**
+ * Фінальний стан за відповіддю сервера: поріг впевненості, запас до
+ * другого кандидата і tie-break LEFT/RIGHT за центроїдом темряви cx
+ * (менше 32 — пляма зліва, більше — справа).
+ */
+function resolveState(res, cx) {
+  const dists = res.dists || {};
+  let state = res.state || 'NEUTRAL';
+
+  // 1. Матч занадто поганий — не розпізнано
+  if (res.dist > CONFIG.classify.rejectDist) return 'NEUTRAL';
+
+  // 2. Другий кандидат майже такий самий — неоднозначно
+  let second = Infinity;
+  for (const name of Object.keys(dists)) {
+    if (name === state) continue;
+    if (dists[name] < second) second = dists[name];
+  }
+  if (Number.isFinite(second) && second - res.dist < CONFIG.classify.marginDist) {
+    return 'NEUTRAL';
+  }
+
+  // 3. LEFT/RIGHT майже однакові — розв'язуємо геометрією маски
+  const margin = CONFIG.classify.marginDist;
+  if (cx >= 0) {
+    if (state === 'LEFT' && typeof dists.RIGHT === 'number' && dists.RIGHT - res.dist < margin && cx >= 32) {
+      return 'RIGHT';
+    }
+    if (state === 'RIGHT' && typeof dists.LEFT === 'number' && dists.LEFT - res.dist < margin && cx < 32) {
+      return 'LEFT';
+    }
+  }
+  return state;
+}
+
 function pumpClassify(now) {
   if (inFlight || !pendingMask) return;
   if (now - lastSent < CLASSIFY_INTERVAL) return;
@@ -156,7 +191,7 @@ function pumpClassify(now) {
   inFlight = true;
   classify(mask)
     .then((res) => {
-      tracker.last.state = res.state;
+      tracker.last.state = resolveState(res, tracker.last.cx);
       tracker.last.dist = res.dist;
       if (serverErrorShown) {
         serverErrorShown = false;
@@ -296,7 +331,7 @@ function drawOverlays(cc, vw, vh, last) {
   cc.fillText('PATTERN: ' + last.state, 8, 8);
   cc.font = '16px system-ui, sans-serif';
   cc.fillStyle = '#c8c8c8';
-  cc.fillText('MSE: ' + Math.round(last.dist), 8, 38);
+  cc.fillText('MSE: ' + Math.round(last.dist * 100) + '%', 8, 38);
   cc.fillStyle = '#00ff00';
   cc.fillText('thr=' + last.thr, 8, 62);
   cc.fillStyle = '#ffc800';
@@ -330,6 +365,7 @@ function setStatus(text, kind) {
 // ---------- Калібрування (новий екран) ----------
 
 const CALIB_BTN_IDS = {
+  NEUTRAL: 'btnCalibNeutral',
   UP: 'btnCalibUp',
   DOWN: 'btnCalibDown',
   LEFT: 'btnCalibLeft',
@@ -338,6 +374,7 @@ const CALIB_BTN_IDS = {
 };
 
 const CALIB_HINTS = {
+  NEUTRAL: 'Язик у спокої — зафіксовано ✓',
   UP: 'Язик вгору — зафіксовано ✓',
   DOWN: 'Язик вниз — зафіксовано ✓',
   LEFT: 'Язик вліво — зафіксовано ✓',
@@ -366,22 +403,38 @@ function syncCalibrationUI(calibrated) {
   enablePlayIfReady();
 }
 
-// Викликається з index.html при кліку на .calib-btn.
-window.__calibCapture = async (state, btn) => {
+// Накопичення кадрів для усередненого еталона (клік → збір N кадрів → відправка).
+let pendingCalib = null; // { name, btn, acc: Uint32Array, n }
+
+function finishCalibCapture(entry, avg) {
   const hint = $('calibHint');
-  try {
-    const ok = await cal.capture(state, () => tracker.last.normalized);
-    if (ok) {
-      btn.classList.add('done');
-      if (hint) hint.textContent = CALIB_HINTS[state] || 'Зафіксовано ✓';
-      enablePlayIfReady();
-    } else if (hint) {
-      hint.textContent = 'Маска порожня — висуньте язик (або відкрийте рот для 👅) і повторіть';
-    }
-  } catch (e) {
-    if (hint) hint.textContent = 'Не вдалося зберегти еталон: ' + e.message;
-    setStatus('Не вдалося зберегти еталон: ' + e.message, 'error');
+  const btn = entry.btn;
+  cal.capture(entry.name, () => avg)
+    .then((ok) => {
+      if (ok) {
+        btn.classList.add('done');
+        if (hint) hint.textContent = CALIB_HINTS[entry.name] || 'Зафіксовано ✓';
+        enablePlayIfReady();
+      } else if (hint) {
+        hint.textContent = 'Маска порожня — висуньте язик (або відкрийте рот для 👅) і повторіть';
+      }
+    })
+    .catch((e) => {
+      if (hint) hint.textContent = 'Не вдалося зберегти еталон: ' + e.message;
+      setStatus('Не вдалося зберегти еталон: ' + e.message, 'error');
+    });
+}
+
+// Викликається з index.html при кліку на .calib-btn.
+window.__calibCapture = (state, btn) => {
+  const hint = $('calibHint');
+  const cur = tracker.last.normalized;
+  if (!cur || cur.length === 0 || cur.every((v) => v === 0)) {
+    if (hint) hint.textContent = 'Маска порожня — висуньте язик (або відкрийте рот для 👅) і повторіть';
+    return;
   }
+  pendingCalib = { name: state, btn, acc: new Uint32Array(cur.length), n: 0, t0: performance.now() };
+  if (hint) hint.textContent = 'Утримуйте позу кілька кадрів…';
 };
 
 // ---------- Головний цикл ----------
@@ -486,6 +539,26 @@ function tick() {
 
     const lms = rawLms.map((lm) => ({ x: 1 - lm.x, y: lm.y, z: lm.z }));
     const { last, lit } = tracker.process(raw, lms);
+
+    // Калібрування: накопичуємо кадри, поки поза тримається, потім усереднюємо
+    if (pendingCalib && !last.mouthClosed) {
+      const m = last.normalized;
+      if (m && m.length === pendingCalib.acc.length) {
+        for (let i = 0; i < m.length; i++) pendingCalib.acc[i] += m[i];
+        pendingCalib.n++;
+        if (pendingCalib.n >= CONFIG.calibration.captureFrames) {
+          const entry = pendingCalib;
+          pendingCalib = null;
+          const avg = new Uint8Array(entry.acc.length);
+          for (let i = 0; i < avg.length; i++) avg[i] = Math.round(entry.acc[i] / entry.n);
+          finishCalibCapture(entry, avg);
+        }
+      }
+    } else if (pendingCalib && now - pendingCalib.t0 > CONFIG.calibration.captureTimeoutMs) {
+      pendingCalib = null;
+      const hint = $('calibHint');
+      if (hint) hint.textContent = 'Не вдалося зібрати кадри — трохи відкрийте рот і повторіть';
+    }
 
     // Показуємо оброблений кадр (екран камери) і чорно-білу маску
     // (екран калібрування — видно, який патерн зніме система).

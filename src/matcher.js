@@ -1,5 +1,7 @@
 // matcher.js — TemplateMatcher з Block-wise MSE Vector Matching.
 // Еталони зберігаються в IndexedDB (аналог папки calibration/ у Python).
+// Класифікацію виконує сервер (server.py) — цей модуль для тестів і
+// резервного/офлайн-режиму; метрика та сама, що на сервері (8×8 блоків).
 
 export const STATE_NAMES = ['UP', 'DOWN', 'LEFT', 'RIGHT', 'OPENED'];
 
@@ -8,28 +10,28 @@ const DB_VERSION = 1;
 const STORE = 'templates';
 
 /**
- * Block-wise MSE Vector Matching: маска 64×64 ділиться на 4 квадранти 32×32,
- * для кожного обчислюється MSE, потім — евклідова відстань між векторами.
+ * Block-wise MSE Vector Matching: маска ділиться на сітку 8×8 блоків,
+ * для кожного обчислюється MSE, результат нормалізовано у [0..1]:
+ * dist = sqrt( sum_b (mse_b / 255^2)^2 ) / 8
  */
 export function blockwiseMSE(camPixels, tplPixels, size) {
-  const q = size / 2;
-  const quads = [
-    [0, 0], [0, q], [q, 0], [q, q],
-  ];
-  let dist = 0;
-  for (const [ry, rx] of quads) {
-    let mse = 0;
-    for (let y = ry; y < ry + q; y++) {
-      for (let x = rx; x < rx + q; x++) {
-        const i = y * size + x;
-        const diff = camPixels[i] - tplPixels[i];
-        mse += diff * diff;
+  const b = size / 8;
+  let s = 0;
+  for (let by = 0; by < size; by += b) {
+    for (let bx = 0; bx < size; bx += b) {
+      let mse = 0;
+      for (let y = by; y < by + b; y++) {
+        for (let x = bx; x < bx + b; x++) {
+          const i = y * size + x;
+          const diff = camPixels[i] - tplPixels[i];
+          mse += diff * diff;
+        }
       }
+      mse /= b * b;
+      s += (mse / (255 * 255)) * (mse / (255 * 255));
     }
-    mse /= q * q;
-    dist += mse * mse;
   }
-  return Math.sqrt(dist);
+  return Math.sqrt(s) / 8;
 }
 
 /** Синтетичні еталони за замовчуванням (білий фон, чорна зона рота). */
@@ -44,6 +46,7 @@ export function syntheticTemplates(size = 64) {
     return t;
   };
   return {
+    NEUTRAL: mk([26, 28, 38, 40]),
     OPENED: mk([6, 20, 58, 44]),
     UP: mk([6, 8, 58, 32]),
     DOWN: mk([6, 32, 58, 56]),
