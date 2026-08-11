@@ -109,6 +109,7 @@ const GAMES = {
         spacing: CONFIG.flappy.spacing,
         pipeWidth: CONFIG.flappy.pipeWidth,
         deathPause: CONFIG.flappy.deathPause,
+        warmupSec: CONFIG.flappy.warmupSec,
       },
       els.gameCanvas,
     ),
