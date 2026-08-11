@@ -46,7 +46,6 @@ export function syntheticTemplates(size = 64) {
     return t;
   };
   return {
-    NEUTRAL: mk([26, 28, 38, 40]),
     OPENED: mk([6, 20, 58, 44]),
     UP: mk([6, 8, 58, 32]),
     DOWN: mk([6, 32, 58, 56]),
@@ -63,7 +62,7 @@ export class TemplateMatcher {
 
   /** Класифікація за мінімальною евклідовою відстанню векторів. */
   match(camPixels) {
-    let best = 'NEUTRAL';
+    let best = 'UP';
     let minDist = Infinity;
     for (const name of Object.keys(this.templates)) {
       const d = blockwiseMSE(camPixels, this.templates[name], this.size);

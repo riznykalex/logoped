@@ -148,14 +148,17 @@ function queueMask(mask) {
 }
 
 /**
- * Фінальний стан за відповіддю сервера. Це тренажер: «вправа → відпочинок».
- * Поки рот відкритий (вправа) NEUTRAL НЕ з'являється: невпевнений матч тримає
- * попередній стан, LEFT/RIGHT розв'язуються за центроїдом темряви cx.
- * Відпочинок = рот закритий (окрема гілка, де стан стає NEUTRAL).
+ * Фінальний стан за відповіддю сервера. Стану NEUTRAL на сервері немає —
+ * відповідь завжди один із 5 жестів. Невпевнений матч тримає попередній
+ * стан (вправа не "випадає"), LEFT/RIGHT розв'язуються за центроїдом cx.
+ * Відпочинок = рот закритий (окрема гілка в tick, стан стає NEUTRAL).
  */
 function resolveState(res, cx, lastState) {
   const dists = res.dists || {};
   const state = res.state || 'NEUTRAL';
+
+  // Старий сервер ще знає NEUTRAL — ігноруємо його як стан (вправа не "випадає")
+  if (state === 'NEUTRAL') return lastState || 'NEUTRAL';
 
   // 1. Матч занадто поганий — вправа не "випадає": тримаємо попередній стан
   if (res.dist > CONFIG.classify.rejectDist) return lastState || 'NEUTRAL';
@@ -364,9 +367,11 @@ function setStatus(text, kind) {
   els.statusText.className = 'status-text' + (kind === 'error' ? ' error' : kind === 'warn' ? ' warn' : '');
 }
 
-/** В куті ігрового екрана — поточна маска Camera View + розпізнаний стан. */
+/** В куті ігрового екрана — поточна маска Camera View + розпізнаний стан.
+ *  Показується лише під час вправи; при відпочинку (рот закритий) — ховається. */
 function drawGameOverlay() {
   if (!game) return;
+  if (tracker.last.state === 'NEUTRAL') return; // відпочинок — нічого не показуємо
   const ctx = game.ctx;
   const cw = game.w;
   const ch = game.h;
@@ -403,14 +408,12 @@ function drawGameOverlay() {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   ctx.fillStyle = '#ffd700';
-  const label = tracker.last.state === 'NEUTRAL' ? 'Спокій' : (tracker.last.state || 'Спокій');
-  ctx.fillText(label, ox + size / 2, oy + size + 5);
+  ctx.fillText(tracker.last.state || '', ox + size / 2, oy + size + 5);
 }
 
 // ---------- Калібрування (новий екран) ----------
 
 const CALIB_BTN_IDS = {
-  NEUTRAL: 'btnCalibNeutral',
   UP: 'btnCalibUp',
   DOWN: 'btnCalibDown',
   LEFT: 'btnCalibLeft',
@@ -419,7 +422,6 @@ const CALIB_BTN_IDS = {
 };
 
 const CALIB_HINTS = {
-  NEUTRAL: 'Язик у спокої — зафіксовано ✓',
   UP: 'Язик вгору — зафіксовано ✓',
   DOWN: 'Язик вниз — зафіксовано ✓',
   LEFT: 'Язик вліво — зафіксовано ✓',
@@ -625,8 +627,8 @@ function tick() {
     calibCtx.fillText('Camera View: ' + last.state, 10, 10);
     drawPanels(last);
 
-    // Рот закритий — маску не надсилаємо, стан = NEUTRAL (як у Python),
-    // курсор миттєво зупиняється (брак).
+    // Рот закритий — відпочинок: маску не надсилаємо, гра отримує NEUTRAL
+    // (пауза/перезарядка кроку), курсор миттєво зупиняється.
     if (last.mouthClosed) {
       pendingMask = null;
       tracker.last.state = 'NEUTRAL';

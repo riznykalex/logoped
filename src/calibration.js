@@ -3,7 +3,7 @@
 
 import { calibrate } from './server.js';
 
-const ALL_STATES = ['NEUTRAL', 'UP', 'DOWN', 'LEFT', 'RIGHT', 'OPENED'];
+const ALL_STATES = ['UP', 'DOWN', 'LEFT', 'RIGHT', 'OPENED'];
 
 export class CalibrationUI {
   constructor() {

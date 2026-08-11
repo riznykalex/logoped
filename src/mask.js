@@ -43,7 +43,8 @@ export function buildStateMask(imageData, landmarks, settings) {
   const b = lm(CORNERS.bottom);
   const mouthW = Math.abs(r.x - l.x);
   const mouthH = Math.abs(b.y - t.y);
-  const mouthClosed = mouthH < CONFIG.mouth.closedH;
+  // Рот закритий за пропорцією висота/ширина (не залежить від відстані до камери)
+  const mouthClosed = mouthW > 0 && mouthH < mouthW * CONFIG.mouth.closedRatio;
 
   const marginX = Math.max(1, Math.round(mouthW * CONFIG.mouth.marginX));
   const marginY = Math.max(1, Math.round(mouthH * CONFIG.mouth.marginY));
