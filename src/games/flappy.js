@@ -9,7 +9,8 @@
 // Перешкоди: пара труб, труба зверху або труба знизу; можуть трохи
 // заходити в безпечну зону. У повітрі літають монетки — пташка їх збирає.
 // Пташка завжди орієнтована горизонтально (спрайт дзеркальний, дивиться вправо).
-// Зіткнення з трубою → коротка пауза (deathPause) і плавний рестарт.
+// Зіткнення з трубою → пташка не гине, а відскакує назад
+// (світ плавно відкочується, поки труба знову не опиниться попереду).
 // Спрайти з https://github.com/hkirat/flappyBird (assets/flappy/).
 
 const SPR = { bg: null, ground: null, upper: null, lower: null, bird: null };
@@ -58,7 +59,8 @@ export class FlappyGame {
     this.gap = (settings && settings.gap) || 170;               // прохід між трубами, px
     this.spacing = (settings && settings.spacing) || 460;       // труби рідше майже вдвічі
     this.pipeWidth = (settings && settings.pipeWidth) || 60;
-    this.deathPause = (settings && settings.deathPause) || 0.8; // пауза перед рестартом
+    this.bounceSpeed = (settings && settings.bounceSpeed) || 260; // швидкість відскоку назад, px/с
+    this.bounceMargin = (settings && settings.bounceMargin) || 30; // зазор: пташка перед трубою після відскоку, px
     this.coinR = (settings && settings.coinR) || 9;             // монетка невелика
     this.warmupSec = (settings && settings.warmupSec) || 10;    // тренування без труб
     this.w = this.canvas.width;
@@ -92,7 +94,8 @@ export class FlappyGame {
     this.groundX = 0;
     this.animT = 0;              // час для анімації крил
     this.hitFlash = 0;
-    this.deathT = 0;             // лічильник паузи перед рестартом
+    this.bounceLeft = 0;          // скільки ще відскочити назад, px
+    this.bounceTarget = 0;        // куди відкотитися: права частина попередньої труби, px
     this.warmupLeft = this.warmupSec; // тренувальний цикл без труб
   }
 
@@ -150,12 +153,17 @@ export class FlappyGame {
   }
 
   tick(dt) {
-    // Пауза після зіткнення — світ завмирає, потім плавний рестарт
-    if (this.deathT > 0) {
-      this.deathT -= dt;
-      if (this.deathT <= 0) {
-        this.reset();
-      }
+    // Відскок: світ плавно відкочується назад, труба знову опиняється попереду.
+    // Пташка не гине і може продовжувати керувати висотою.
+    if (this.bounceLeft > 0) {
+      const step = Math.min(this.bounceSpeed * dt, this.bounceLeft);
+      for (const p of this.pipes) p.x += step;
+      for (const c of this.coinItems) c.x += step;
+      this.groundX = ((this.groundX + step) % 308 + 308) % 308;
+      this.bounceLeft -= step;
+      this._flyVertical(dt);
+      this.animT += dt;
+      if (this.hitFlash > 0) this.hitFlash = Math.max(0, this.hitFlash - dt * 3);
       return;
     }
 
@@ -166,21 +174,7 @@ export class FlappyGame {
       this.speed = Math.min(this.maxSpeed, this.speed + this.accel * dt);
     }
 
-    // --- Висота: UP вгору, DOWN вниз, інакше пружина до центру ---
-    if (this.state === 'UP') {
-      this.by -= this.climbSpeed * dt;
-      this.vy = -this.climbSpeed;
-    } else if (this.state === 'DOWN') {
-      this.by += this.climbSpeed * dt;
-      this.vy = this.climbSpeed;
-    } else {
-      this.vy += (this.centerY - this.by) * this.spring * dt;
-      this.vy *= Math.pow(this.damp, dt * 60);
-      this.by += this.vy * dt;
-    }
-    // Смуга допуску навколо центру
-    this.by = Math.max(this.centerY - this.tolerance, Math.min(this.centerY + this.tolerance, this.by));
-
+    this._flyVertical(dt);
     this.animT += dt;
     this.groundX = ((this.groundX - this.speed * dt) % 308 + 308) % 308;
 
@@ -218,16 +212,35 @@ export class FlappyGame {
     }
     if (this.coinFlash > 0) this.coinFlash = Math.max(0, this.coinFlash - dt * 3);
 
-    // Зіткнення з трубою → коротка пауза, потім рестарт
+    // Зіткнення з трубою → відскок назад, без смерті
     for (const p of this.pipes) {
       if (this._hitPipe(p)) {
-        this.deathT = this.deathPause;
+        // Відкотитися до попередньої труби: труба знову повністю перед пташкою
+        this.bounceTarget = this.bx + this.r + this.bounceMargin - p.x;
+        this.bounceLeft = this.bounceTarget;
         this.hitFlash = 1;
         return;
       }
     }
 
     if (this.hitFlash > 0) this.hitFlash = Math.max(0, this.hitFlash - dt * 3);
+  }
+
+  _flyVertical(dt) {
+    // --- Висота: UP вгору, DOWN вниз, інакше пружина до центру ---
+    if (this.state === 'UP') {
+      this.by -= this.climbSpeed * dt;
+      this.vy = -this.climbSpeed;
+    } else if (this.state === 'DOWN') {
+      this.by += this.climbSpeed * dt;
+      this.vy = this.climbSpeed;
+    } else {
+      this.vy += (this.centerY - this.by) * this.spring * dt;
+      this.vy *= Math.pow(this.damp, dt * 60);
+      this.by += this.vy * dt;
+    }
+    // Смуга допуску навколо центру
+    this.by = Math.max(this.centerY - this.tolerance, Math.min(this.centerY + this.tolerance, this.by));
   }
 
   _hitPipe(p) {
