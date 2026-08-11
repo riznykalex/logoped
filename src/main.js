@@ -77,13 +77,11 @@ const GAMES = {
   drawing: {
     name: 'Малювання',
     emoji: '✏️',
-    desc: 'Обведіть малюнок по точках',
-    winText: () => 'Малюнок готовий!',
+    desc: 'Малюйте по сітці язиком',
+    winText: null, // без перемоги — вільне малювання
     create: () => new DrawingGame(
       {
-        cursorSpeed: CONFIG.drawing.cursorSpeed,
-        snapRadius: CONFIG.drawing.snapRadius,
-        visitRadius: CONFIG.drawing.visitRadius,
+        cols: CONFIG.drawing.cols,
       },
       els.gameCanvas,
     ),
